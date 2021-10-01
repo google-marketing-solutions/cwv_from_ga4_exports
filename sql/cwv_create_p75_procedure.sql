@@ -2,7 +2,7 @@
 -- range.
 
 CREATE OR REPLACE
-  PROCEDURE analytics_ < GA_ID >.get_cwv_p75_for_date(start_date date, num_days INT64) BEGIN
+  PROCEDURE analytics_<GA_ID>.get_cwv_p75_for_date(start_date date, num_days INT64) BEGIN
 SELECT
   metric_name, APPROX_QUANTILES(metric_value, 100)[OFFSET(75)] AS p75, COUNT(1) AS count
 FROM `<PROJECT_ID>.analytics_<GA_ID>.web_vitals_summary`

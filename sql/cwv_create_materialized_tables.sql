@@ -14,7 +14,7 @@
 -- Materialize Web Vitals metrics from GA4 event export data
 
 CREATE OR REPLACE TABLE
-  <PROJECT_ID>.<DATA_SET>.web_vitals_summary
+  <PROJECT_ID>.analytics_<GA_ID>.web_vitals_summary
   PARTITION BY DATE(event_timestamp)
   CLUSTER BY metric_name
 AS
