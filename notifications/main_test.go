@@ -1,11 +1,101 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
 )
+
+func Test_getCloudEventDataFromRequest(t *testing.T) {
+	goodCE := io.NopCloser(strings.NewReader(`{
+    "ProtoPayload": {
+      "ServiceName": "bigquery.googleapis.com",
+      "MethodName": "google.cloud.bigquery.v2.JobService",
+      "MetaData": {
+        "TableCreation": {
+          "Table": {
+            "TableName": "events_12345678"
+          }
+        }
+      }
+    }
+  }`))
+
+	service, method, tableName := getCloudEventDataFromRequest(goodCE)
+	if service != "bigquery.googleapis.com" && method != "google.cloud.bigquery.v2.JobService" && tableName != "events_12345678" {
+		t.Errorf("Expected event data not returned: service --> %s; method --> %s; table --> %s", method, service, tableName)
+	}
+
+	badCE := io.NopCloser(strings.NewReader(`{
+    "ProtoPayload": {
+      "ServiceName": "bigquery.googleapis.com",
+      "MethodName": "google.cloud.bigquery.v2.JobService",
+      "MetaData": {
+        "TableUpdate": {
+          "Table": {
+            "TableName": "events_12345678"
+          }
+        }
+      }
+    }
+  }`))
+
+	service, method, tableName = getCloudEventDataFromRequest(badCE)
+	if service != "bigquery.googleapis.com" && method != "google.cloud.bigquery.v2.JobService" && tableName != "" {
+		t.Errorf("Table returned when none expected: %s", tableName)
+	}
+}
+
+func Test_getCWVThresholds(t *testing.T) {
+	expectedLCP := 1.0
+	expectedCLS := 2.0
+	expectedFID := 3.0
+	// all floats
+	os.Setenv("GOOD_LCP", "1.0")
+	os.Setenv("GOOD_CLS", "2.0")
+	os.Setenv("GOOD_FID", "3.0")
+	lcp, cls, fid := getCWVThresholds()
+	if lcp != expectedLCP && cls != expectedCLS && fid != expectedFID {
+		t.Errorf("Incorrect values returned from env variables when all floats: LCP %f/%f; CLS %f/%f; FID %f/%f", expectedLCP, lcp, expectedCLS, cls, expectedFID, fid)
+	}
+
+	// one number without a decimal
+	os.Setenv("GOOD_LCP", "1")
+	lcp, cls, fid = getCWVThresholds()
+	if lcp != expectedLCP && cls != expectedCLS && fid != expectedFID {
+		t.Errorf("Incorrect values returned from env variables when LCP has no decimal: LCP %f/%f; CLS %f/%f; FID %f/%f", expectedLCP, lcp, expectedCLS, cls, expectedFID, fid)
+	}
+
+	// one set as an invalid string
+	os.Setenv("GOOD_LCP", "foobar")
+	lcp, cls, fid = getCWVThresholds()
+	if lcp != StandardGoodLCP && cls != expectedCLS && fid != expectedFID {
+		t.Errorf("Incorrect values returned from env variables when LCP is invalid: LCP %f/%f; CLS %f/%f; FID %f/%f", expectedLCP, lcp, expectedCLS, cls, expectedFID, fid)
+	}
+
+	// one unset
+	os.Unsetenv("GOOD_LCP")
+	lcp, cls, fid = getCWVThresholds()
+	if lcp != StandardGoodLCP && cls != expectedCLS && fid != expectedFID {
+		t.Errorf("Incorrect values returned from env variables when all 0: LCP %f/%f; CLS %f/%f; FID %f/%f", StandardGoodLCP, lcp, StandardGoodCLS, cls, StandardGoodFID, fid)
+	}
+
+	// all unset
+	os.Unsetenv("GOOD_CLS")
+	os.Unsetenv("GOOD_FID")
+	lcp, cls, fid = getCWVThresholds()
+	if lcp != StandardGoodLCP && cls != StandardGoodCLS && fid != StandardGoodFID {
+		t.Errorf("Incorrect values returned from env variables when all 0: LCP %f/%f; CLS %f/%f; FID %f/%f", StandardGoodLCP, lcp, StandardGoodCLS, cls, StandardGoodFID, fid)
+	}
+
+	t.Cleanup(func() {
+		os.Unsetenv("GOOD_LCP")
+		os.Unsetenv("GOOD_CLS")
+		os.Unsetenv("GOOD_FID")
+	})
+}
 
 func Test_areCWVValuesGood(t *testing.T) {
 	os.Setenv("GOOD_LCP", "2.5")
@@ -83,42 +173,48 @@ func Test_getCwvValues(t *testing.T) {
 	t.Skip("Would be bigquery integration test")
 }
 
-func Test_getCloudEventDataFromJSON(t *testing.T) {
-	goodCE := io.NopCloser(strings.NewReader(`{
-    "ProtoPayload": {
-      "ServiceName": "bigquery.googleapis.com",
-      "MethodName": "google.cloud.bigquery.v2.JobService",
-      "MetaData": {
-        "TableCreation": {
-          "Table": {
-            "TableName": "events_12345678"
-          }
-        }
-      }
-    }
-  }`))
+func Test_sendAlertEmail(t *testing.T) {
+	t.Skip("Would be testing net/smtp API")
+}
 
-	service, method, tableName := getCloudEventDataFromRequest(goodCE)
-	if service != "bigquery.googleapis.com" && method != "google.cloud.bigquery.v2.JobService" && tableName != "events_12345678" {
-		t.Errorf("Expected event data not returned: service --> %s; method --> %s; table --> %s", method, service, tableName)
+func Test_createEmailMessage(t *testing.T) {
+	os.Setenv("GOOD_LCP", "1")
+	os.Setenv("GOOD_CLS", "1")
+	os.Setenv("GOOD_FID", "1")
+
+	emailTo := "receiver@example.com"
+	emailFrom := "sender@example.com"
+
+	// all poor metrics
+	expectedEmail := fmt.Sprintf(EmailMessageHeader, emailFrom, emailTo) +
+		"LCP of 10 ms is 1000% of 1 ms budget.\r\n" +
+		"CLS of 10 is 1000% of 1 budget.\r\n" +
+		"FID of 10 ms is 1000% of 1 ms budget.\r\n" +
+		EmailHTMLStart +
+		"<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">LCP</td><td>10ms</td><td>1ms</td><td style=\"color: red\">1000%</td></tr>" +
+		"<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">CLS</td><td>10</td><td>1</td><td style=\"color: red\">1000%</td></tr>" +
+		"<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">FID</td><td>10ms</td><td>1ms</td><td style=\"color: red\">1000%</td></tr>" +
+		EmailHTMLEnd
+
+	email := createEmailMessage(emailFrom, emailTo, 10.0, 10.0, 10.0)
+	if string(email) != expectedEmail {
+		t.Error("Email not as expected with all poor metrics.")
+	}
+	// one poor metric
+	expectedEmail = fmt.Sprintf(EmailMessageHeader, emailFrom, emailTo) +
+		"CLS of 10 is 1000% of 1 budget.\r\n" +
+		EmailHTMLStart +
+		"<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">CLS</td><td>10</td><td>1</td><td style=\"color: red\">1000%</td></tr>" +
+		EmailHTMLEnd
+
+	email = createEmailMessage(emailFrom, emailTo, 0.0, 10.0, 0.0)
+	if string(email) != expectedEmail {
+		t.Error("Email not as expected with one poor metric.")
 	}
 
-	badCE := io.NopCloser(strings.NewReader(`{
-    "ProtoPayload": {
-      "ServiceName": "bigquery.googleapis.com",
-      "MethodName": "google.cloud.bigquery.v2.JobService",
-      "MetaData": {
-        "TableUpdate": {
-          "Table": {
-            "TableName": "events_12345678"
-          }
-        }
-      }
-    }
-  }`))
-
-	service, method, tableName = getCloudEventDataFromRequest(badCE)
-	if service != "bigquery.googleapis.com" && method != "google.cloud.bigquery.v2.JobService" && tableName != "" {
-		t.Errorf("Table returned when none expected: %s", tableName)
-	}
+	t.Cleanup(func() {
+		os.Unsetenv("GOOD_LCP")
+		os.Unsetenv("GOOD_CLS")
+		os.Unsetenv("GOOD_FID")
+	})
 }

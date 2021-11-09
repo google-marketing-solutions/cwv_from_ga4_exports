@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"regexp"
 	"strconv"
@@ -27,6 +28,54 @@ import (
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/iterator"
 )
+
+// The standard values for a good score according to the Chrome DevRel team.
+// The values are:
+//   - Largest Contentful Paint  2500 ms
+//   - Cumulative Layout Shift   0.1
+//   - First Input Delay         100 ms
+// For more information see https://web.dev/vitals
+const StandardGoodLCP = 2500.0 // ms
+const StandardGoodCLS = 0.1    // unitless
+const StandardGoodFID = 100.0  // ms
+
+// The top of the email message. The from and to addresses need to be filled in.
+// Exported for ease of testing.
+var EmailMessageHeader = strings.Join([]string{
+	"From: CWV Alerter <%s>",
+	"To: %s",
+	"Subject: Core Web Vitals are not meeting thresholds",
+	"MIME-Version: 1.0",
+	"Content-Type: multipart/alternative; boundary=\"part_boundary\"",
+	"",
+	"--part_boundary",
+	"Content-Type: text/plain; charset=\"UTF-8\"",
+	"Content-Transfer-Encoding: quoted-printable",
+	"",
+	"Your Core Web Vitals values are not meeting your budgeted values:",
+	""}, "\r\n")
+
+// The start of the html part of the email.
+var EmailHTMLStart = strings.Join([]string{
+	"",
+	"--part-boundary",
+	"Content-Type: text/html; charset=\"UTF-8\"",
+	"Content-Transfer-Encoding: quoted-printable",
+	"",
+	"<h1>Core Web Vitals Alert</h1>",
+	"<p>Your Core Web Vitals scores are not meeting your budgeted values:</p>",
+	"<table style=\"border-spacing: 0.5em\">",
+	"<caption>Core Web Vitals Issues</caption>",
+	"<thead><tr><th>Metric</th><th>Value</th><th>Budget</th><th>% Over</th></tr></thead>",
+	"<tbody>",
+}, "\r\n")
+
+// The end of the html part of the email and the end of the email as a whole.
+var EmailHTMLEnd = strings.Join([]string{
+	"</tbody></table>",
+	"--part-boundary--",
+	"",
+}, "\r\n")
 
 // cloudEvent represents the body of an Eventarc event. Only the parts of the
 // event that are required to determine if it's an event we're interested in
@@ -123,23 +172,41 @@ func getCloudEventDataFromRequest(req io.ReadCloser) (string, string, string) {
 	return service, method, tableName
 }
 
+// getCWVThresholds retrieves the Core Web Vital metric thresholds defined in
+// the GOOD_LCP, GOOD_CLS, and GOOD_FID environment variables. If the threshold
+// is not set, the standard values from the Chrome DevRel team (defined at the
+// top of the module for ease of maintenance) are used.
+func getCWVThresholds() (float64, float64, float64) {
+	// parseEnvToFloat is a utility function that takes an environment variable name
+	// and then returns the value as a float64 or the default value specified if the
+	// variable isn't defined or cannot be parsed.
+	parseEnvToFloat := func(varName string, defaultVal float64) float64 {
+		var varValue float64
+		var err error
+		if varValue, err = strconv.ParseFloat(os.Getenv(varName), 64); err != nil {
+			if _, exists := os.LookupEnv(varName); exists {
+				log.Printf("Problem converting %s threshold. Using default.", varName)
+			}
+			varValue = defaultVal
+		}
+
+		return varValue
+	}
+
+	LCPThresh := parseEnvToFloat("GOOD_LCP", StandardGoodLCP)
+	CLSThresh := parseEnvToFloat("GOOD_CLS", StandardGoodCLS)
+	FIDThresh := parseEnvToFloat("GOOD_FID", StandardGoodFID)
+
+	return LCPThresh, CLSThresh, FIDThresh
+}
+
 // areCWVValuesGood returns whether the CWV metrics meet the good threshold set
 // in the environment variables GOOD_LCP, GOOD_CLS, and GOOD_FID.
 // The metrics are returned in the order Largest Contentful Paint (LCP),
 // Cumulative Layout Shift (CLS), First Input Delay (FID).
 func areCWVValuesGood(lcp float64, cls float64, fid float64) (bool, bool, bool) {
-	var goodLCP, goodCLS, goodFID float64
+	goodLCP, goodCLS, goodFID := getCWVThresholds()
 	var isLCPGood, isCLSGood, isFIDGood bool // bools default to false
-	var err error
-	if goodLCP, err = strconv.ParseFloat(os.Getenv("GOOD_LCP"), 64); err != nil {
-		panic(fmt.Sprintf("Problem converting LCP threshold: %v", err))
-	}
-	if goodCLS, err = strconv.ParseFloat(os.Getenv("GOOD_CLS"), 64); err != nil {
-		panic(fmt.Sprintf("Problem converting CLS threshold: %v", err))
-	}
-	if goodFID, err = strconv.ParseFloat(os.Getenv("GOOD_FID"), 64); err != nil {
-		panic(fmt.Sprintf("Problem converting FID threshold: %v", err))
-	}
 
 	if lcp <= goodLCP {
 		isLCPGood = true
@@ -195,8 +262,68 @@ func getCWVValues(startDate time.Time, numDays int) (float64, float64, float64) 
 	return lcp, cls, fid
 }
 
+// sendAlertEmail retrieves the environment variables required to send the alert
+// email using the given CWV values. The required environment variables are:
+//  - ALERT_RECEIVERS: a comma-separated list of email addresses to receive the alert
+//  - EMAIL_FROM: the email address to use as the alert sender
+//  - EMAIL_SERVER: the address of the SMTP server to use
+//  - EMAIL_USER: the username to use when authenticating with the SMTP server
+//  - EMAIL_PASS: the password to use when authenticating with the SMTP server
 func sendAlertEmail(lcp float64, cls float64, fid float64) error {
-	// TODO (adamread): write this function. It's been left out of the initial CL
-	// to keep the size down.
-	return nil
+	toAddresses := os.Getenv("ALERT_RECEIVERS")
+	fromAddress := os.Getenv("EMAIL_FROM")
+	message := createEmailMessage(fromAddress, toAddresses, lcp, cls, fid)
+
+	mailServer := os.Getenv("EMAIL_SERVER")
+	mailUser := os.Getenv("EMAIL_USER")
+	mailPass := os.Getenv("EMAIL_PASS")
+	mailAuth := smtp.PlainAuth("", mailUser, mailPass, mailServer)
+	err := smtp.SendMail(mailServer, mailAuth, fromAddress, strings.Split(toAddresses, ","), message)
+
+	return err
+}
+
+// createEmailMessage builds the byte array to be used as the message when
+// sending an email. It is assumed that at least one of the metrics is failing.
+// The message is a multipart MIME message with a plain text and an HTML part.
+func createEmailMessage(from string, to string, lcp float64, cls float64, fid float64) []byte {
+	LCPIsGood, CLSIsGood, FIDIsGood := areCWVValuesGood(lcp, cls, fid)
+	goodLCP, goodCLS, goodFID := getCWVThresholds()
+	lcpPercent := lcp / goodLCP * 100
+	clsPercent := cls / goodCLS * 100
+	fidPercent := fid / goodFID * 100
+
+	message := fmt.Sprintf(EmailMessageHeader, from, to)
+
+	if !LCPIsGood {
+		message += fmt.Sprintf("LCP of %.0f ms is %.0f%% of %.0f ms budget.\r\n", lcp, lcpPercent, goodLCP)
+	}
+	if !CLSIsGood {
+		message += fmt.Sprintf("CLS of %.0f is %.0f%% of %.0f budget.\r\n", cls, clsPercent, goodCLS)
+	}
+	if !FIDIsGood {
+		message += fmt.Sprintf("FID of %.0f ms is %.0f%% of %.0f ms budget.\r\n", fid, fidPercent, goodFID)
+	}
+
+	message += EmailHTMLStart
+
+	if !LCPIsGood {
+		message += "<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">LCP</td>" +
+			fmt.Sprintf("<td>%.0fms</td><td>%.0fms</td><td style=\"color: red\">%.0f%%</td>", lcp, goodLCP, lcpPercent) +
+			"</tr>"
+	}
+	if !CLSIsGood {
+		message += "<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">CLS</td>" +
+			fmt.Sprintf("<td>%.0f</td><td>%.0f</td><td style=\"color: red\">%.0f%%</td>", cls, goodCLS, clsPercent) +
+			"</tr>"
+	}
+	if !FIDIsGood {
+		message += "<tr><td style=\"background: lightgray; font-weight: bolder; text-align: center\">FID</td>" +
+			fmt.Sprintf("<td>%.0fms</td><td>%.0fms</td><td style=\"color: red\">%.0f%%</td>", fid, goodFID, fidPercent) +
+			"</tr>"
+	}
+
+	message += EmailHTMLEnd
+
+	return []byte(message)
 }
