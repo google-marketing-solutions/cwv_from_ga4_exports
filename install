@@ -145,11 +145,24 @@ prepare_deployment_files() (
 #######################################
 deploy() (
   printf "\nDeploying the SQL scripts.\n"
-  local bq='bq query --use_legacy_sql=false'
-  for d_file in ./deployment_files/*.sql; do
-    ${bq} < "${d_file}" || 
-      { printf "Error deploying %s to BigQuery\n" "${d_file}" >&2; exit 1; }
-  done
+
+  gcloud services enable bigquerydatatransfer.googleapis.com ||
+    { printf "Unable to enable BigQuery Data Transfer."; exit 1; }
+  # bq requires the user to open a URL and paste a version_info string into the
+  # console when scheduling a query. Using a redirect to pass the contents of 
+  # the file with the query results in bq getting an EOF and dying. Therefore we
+  # cat the file at the end. 
+  bq query \
+    --use_legacy_sql=false \
+    --destination_table=analytics_"${ga_property}".web_vitals_summary \
+    --display_name='Update Web Vitals Summary' \
+    --schedule='every 24 hours' \
+    --replace=true \
+    "'$(cat ./deployment_files/cwv_create_materialized_tables.sql)'" ||
+      { printf "Error creating scheduled query for materialized summary";
+        exit 1; }
+
+  bq query --use_legacy_sql=false < ./deployment_files/cwv_create_p75_procedure.sql
 
   printf "Deploying the Cloud Run alerting function.\n"
   
