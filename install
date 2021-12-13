@@ -189,6 +189,14 @@ deploy() (
     read -rp 'Please enter the region you deployed the Cloud Run function to: ' \
       gcp_region
   fi
+
+  gcloud eventarc triggers list --location "${gcp_region}" \
+    | grep -q cwv-alert-email-trigger
+  if (( PIPESTATUS[0] == 0 && PIPESTATUS[1] == 0 )); then
+    gcloud eventarc triggers delete cwv-alert-email-trigger --location "${gcp_region}" ||
+      { printf "Error deleting the existing eventarc trigger." >&2; exit 1; }
+  fi
+
   local service_account
   service_account=$(gcloud iam service-accounts list | \
     grep -E -o '[0-9]+-compute@developer.gserviceaccount.com')
