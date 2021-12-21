@@ -247,7 +247,7 @@ func getCWVValues(startDate time.Time, numDays int) (float64, float64, float64) 
 		log.Fatal("Problem connecting to BigQuery: ", err)
 	}
 	analyticsID := os.Getenv("ANALYTICS_ID")
-	bqProcedureName := "analytics_" + analyticsID + "get_cwv_p75_for_date"
+	bqProcedureName := "analytics_" + analyticsID + ".get_cwv_p75_for_date"
 	startDateString := "PARSE_DATE('%Y%m%d', '" + startDate.Format("20060201") + "')"
 	bqQuery := bqClient.Query(fmt.Sprintf("CALL %s(%s, %d)", bqProcedureName, startDateString, numDays))
 
