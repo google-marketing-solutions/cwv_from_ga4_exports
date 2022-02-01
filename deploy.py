@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import sys
 from typing import List
 import google.auth
 from google.auth.credentials import Credentials
 import google.api_core.exceptions
 from googleapiclient import discovery
+from google.cloud import bigquery
 from google.cloud import bigquery_datatransfer
 
 # Copyright 2021 Google LLC
@@ -234,8 +236,44 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
   )
 
 
-def deploy_p75_procedure():
-  pass
+def deploy_p75_procedure(project_id: str, ga_property: str):
+  """Deploys the p75 stored procedure to BigQuery.
+
+    The p75 procedure is used by the email alerting function to find if the CWV
+    values have crossed the threshold set by the user.
+
+    Args:
+      project_id: The GCP project ID the procedure is being deployed to.
+      ga_propery: The GA property used to collect the CWV data.
+  """
+
+  p75_procedure = f'''CREATE OR REPLACE
+  PROCEDURE analytics_{ga_property}.get_cwv_p75_for_date(start_date date, num_days INT64) BEGIN
+SELECT
+  metric_name, APPROX_QUANTILES(metric_value, 100)[OFFSET(75)] AS p75, COUNT(1) AS count
+FROM `{project_id}.analytics_{ga_property}.web_vitals_summary`
+WHERE
+  PARSE_DATE('%Y%m%d', event_date)
+  BETWEEN DATE_SUB(start_date, INTERVAL num_days DAY)
+  AND DATE_SUB(start_date, INTERVAL 1 DAY)
+GROUP BY 1;
+
+END
+  '''
+
+  bq_client = bigquery.Client()
+  query_job = bq_client.query(p75_procedure)
+
+  def query_done_callback(job):
+    if job.error_result:
+      print('There was an error deploying the p75 procedure: ', file=sys.stderr)
+      for error_key in job.error_result.keys():
+        for error in job.error_result[error_key]:
+          print(error, file=sys.stderr)
+      print('Please check the GCP logs and try again.')
+
+  query_job.add_done_callback(query_done_callback)
+  query_job.result()
 
 
 def deploy_cloudrun_alerter():
@@ -321,7 +359,7 @@ def main():
       'alerts to: ')).strip()
 
   deploy_scheduled_materialize_query(project_id, args.region, args.ga_property)
-  deploy_p75_procedure()
+  deploy_p75_procedure(project_id, args.ga_property)
   deploy_cloudrun_alerter()
   create_cloudrun_trigger()
 
