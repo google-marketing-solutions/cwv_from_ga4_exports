@@ -366,7 +366,7 @@ def main():
   arg_parser.add_argument('-l', '--lcp-threshold', default=2500,
                           help=('The value to use as the threshold for a good '
                                 'LCP score in ms (default %(default)d).'))
-  arg_parser.add_argument('-f' '--fid-threshold', default=100,
+  arg_parser.add_argument('-f', '--fid-threshold', default=100,
                           help=('The value to use as a threshold for a good FID'
                                 ' score in ms (default %(default)d)'))
   arg_parser.add_argument('-c', '--cls-threshold', default=0.1,
