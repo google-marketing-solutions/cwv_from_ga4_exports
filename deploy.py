@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
+
+"""Deployment script for CWV in GA4 solution.
+
+ Deploys the SQL tables and scripts needed to collect CWVs according to the
+ standard set in https://web.dev/vitals-ga4/ as well as a cloud run function
+ for alerting.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+     https://www.apache.org/licenses/LICENSE-2.0
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+"""
+
 import argparse
 import os
+import subprocess
 import sys
 from typing import List
+
+import google.api_core.exceptions
 import google.auth
 from google.auth.credentials import Credentials
-import google.api_core.exceptions
-from googleapiclient import discovery
 from google.cloud import bigquery
 from google.cloud import bigquery_datatransfer
-
-# Copyright 2021 Google LLC
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#     https://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Deploys the SQL tables and scripts needed to collect CWVs according to the
-# standard set in https://web.dev/vitals-ga4/ as well as a cloud run function
-# for alerting.
+from googleapiclient import discovery
 
 
 def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
@@ -31,7 +36,7 @@ def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
 
   Args:
     credentials: the Google credentials to use to authenticate.
-    project: The project to use when making the query.
+    project_id: The project to use when making the query.
 
   Returns:
     A list of region names in str format.
@@ -42,7 +47,7 @@ def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
   while request is not None:
     response = request.execute()
     for region in response['items']:
-      if 'name' in region and region['name'] != '':
+      if 'name' in region and region['name']:
         regions.append(region['name'])
 
     if 'nextPageToken' in response:
@@ -54,8 +59,7 @@ def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
 
 
 def delete_scheduled_query(display_name: str, project_id: str, region: str):
-  """Deletes the BigQuery scheduled queries (data transfer) with the given
-  display name.
+  """Deletes the BigQuery scheduled queries with the given display name.
 
   Please note that the display name of a BigQuery scheduled query is not unique.
   This means that multiple queries can be deleted.
@@ -69,8 +73,8 @@ def delete_scheduled_query(display_name: str, project_id: str, region: str):
   parent = transfer_client.common_location_path(project=project_id,
                                                 location=region)
   transfer_config_req = bigquery_datatransfer.ListTransferConfigsRequest(
-    parent=parent,
-    data_source_ids=['scheduled_query'])
+      parent=parent,
+      data_source_ids=['scheduled_query'])
   configs = transfer_client.list_transfer_configs(request=transfer_config_req)
   for config in configs:
     if config.display_name == display_name:
@@ -220,31 +224,31 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
   parent = transfer_client.common_location_path(project=project_id,
                                                 location=region)
   transfer_config = bigquery_datatransfer.TransferConfig(
-    display_name=display_name,
-    data_source_id='scheduled_query',
-    params={
-      'query': materialize_query,
-    },
-    schedule='every 24 hours',
+      display_name=display_name,
+      data_source_id='scheduled_query',
+      params={
+          'query': materialize_query,
+      },
+      schedule='every 24 hours',
   )
 
   transfer_config = transfer_client.create_transfer_config(
-    bigquery_datatransfer.CreateTransferConfigRequest(
-      parent=parent,
-      transfer_config=transfer_config
-    )
+      bigquery_datatransfer.CreateTransferConfigRequest(
+          parent=parent,
+          transfer_config=transfer_config
+      )
   )
 
 
 def deploy_p75_procedure(project_id: str, ga_property: str):
   """Deploys the p75 stored procedure to BigQuery.
 
-    The p75 procedure is used by the email alerting function to find if the CWV
-    values have crossed the threshold set by the user.
+  The p75 procedure is used by the email alerting function to find if the CWV
+  values have crossed the threshold set by the user.
 
-    Args:
-      project_id: The GCP project ID the procedure is being deployed to.
-      ga_propery: The GA property used to collect the CWV data.
+  Args:
+    project_id: The GCP project ID the procedure is being deployed to.
+    ga_property: The GA property used to collect the CWV data.
   """
 
   p75_procedure = f'''CREATE OR REPLACE
@@ -270,14 +274,73 @@ END
       for error_key in job.error_result.keys():
         for error in job.error_result[error_key]:
           print(error, file=sys.stderr)
-      print('Please check the GCP logs and try again.')
+      raise SystemExit('Please check the GCP logs and try again.')
 
   query_job.add_done_callback(query_done_callback)
   query_job.result()
 
 
-def deploy_cloudrun_alerter():
-  pass
+def deploy_cloudrun_alerter(ga_property: str, region: str, lcp_threshold: int,
+                            cls_threshold: float, fid_threshold: int,
+                            email_server: str, email_user: str,
+                            email_password: str, email_from: str,
+                            alert_recipients: str):
+  """Deploys the Cloud Run function that sends the alert email.
+
+  The GCP API doesn't provide a function to deploy functions from source, so
+  we shell out to the gcloud command. That command sets the environment
+  variables for the function to use and deploys it from the source in the
+  notifications directory.
+
+  Note: this won't work if the script is moved, so we fail if the
+  notifications directory is not found.
+
+  Args:
+    ga_property: The GA property used to collect the CWV data.
+    region: The region to deploy the function to. This must be the same region
+            the CWV data is stored in in BQ.
+    lcp_threshold: The threshold LCP value to send the email for.
+    cls_threshold: The threshold CLS value to send the email for.
+    fid_threshold: The threshold FID value to send the email for.
+    email_server: The SMTP server to use to send the email.
+    email_user: The user name to use when authenticating with the server.
+    email_password: The password to use when authenticating with the server.
+    email_from: The email address to use in the alert's From field.
+    alert_recipients: A comma-separated list of emails to send the alert to.
+
+  Raises:
+    SystemExit: Raised when the deployment fails.
+  """
+  # : used as a separator to allow a comma-separated list of alert recipients.
+  env_vars = (f'^:^ANALYTICS_ID={ga_property}:'
+              f'GOOD_LCP={lcp_threshold}:'
+              f'GOOD_CLS={cls_threshold}:'
+              f'GOOD_FID={fid_threshold}:'
+              f'EMAIL_SERVER={email_server}:'
+              f'EMAIL_USER={email_user}:'
+              f'EMAIL_PASS={email_password}:'
+              f'EMAIL_FROM={email_from}:'
+              f'ALERT_RECEIVERS={alert_recipients}')
+
+  source_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                            'notifications')
+  if not os.path.isdir(source_dir):
+    print('Source directory for the email notification function not found.',
+          file=sys.stderr)
+    raise SystemExit('Please ensure the deploy script is in the distribution '
+                     'directory as delivered.')
+
+  try:
+    subprocess.run(['gcloud', 'run', 'deploy', 'cwv-alerting-service',
+                    f'--region={region}',
+                    f'--set-env-vars={env_vars}',
+                    '--source', source_dir],
+                   check=True
+                   )
+  except subprocess.CalledProcessError as cpe:
+    raise SystemExit('Deploying the email alerting function failed. Please '
+                     'check the messages above and correct any issues before '
+                     'trying again.') from cpe
 
 
 def create_cloudrun_trigger():
@@ -289,9 +352,12 @@ def main():
 
   Command line arguments are parsed and any missing information is gathered
   before running through the deployment steps.
+
+  Raises:
+    SystemExit: Raised when a non-GA4 property is entered.
   """
   arg_parser = argparse.ArgumentParser(
-    description='Deploys the CWV in GA solution')
+      description='Deploys the CWV in GA solution')
   arg_parser.add_argument('-g', '--ga-property', type=int,
                           help=('The GA property ID to use when looking for '
                                 'exports in big query.'))
@@ -315,6 +381,9 @@ def main():
   arg_parser.add_argument('-p', '--email-password',
                           help=('The password to use to authenticate with the '
                                 'email server'))
+  arg_parser.add_argument('-e', '--email-from',
+                          help=('The email address used in the from field of '
+                                'the alert'))
   arg_parser.add_argument('-a', '--alert-recipients',
                           help=('A comma-separated list of email addresses to '
                                 'send the alerts to.'))
@@ -322,45 +391,49 @@ def main():
   args = arg_parser.parse_args()
 
   credentials, project_id = google.auth.default()
-  if project_id is None or project_id == '':
+  if not project_id:
     project_id = os.environ['GOOGLE_CLOUD_PROJECT']
 
   if not args.region:
     args.region = input(
-      'Which region should be deployed to (type list for a list)? ').strip()
+        'Which region should be deployed to (type list for a list)? ').strip()
     while args.region == 'list':
       region_list = get_gcp_regions(credentials, project_id)
       print('\n'.join(region_list))
       args.region = (input(
-        'Which region is the GA export in (list for a list of regions)? ')
-        .strip())
+          'Which region is the GA export in (list for a list of regions)? ')
+                     .strip())
   if not args.ga_property:
     args.ga_property = (input(
-      'Please enter the GA property ID you are collecting CWV data with: ')
-      .strip())
+        'Please enter the GA property ID you are collecting CWV data with: ')
+                        .strip())
     if not args.ga_property.isdigit():
-        raise SystemExit('Only GA4 properties are supported at this time.')
+      raise SystemExit('Only GA4 properties are supported at this time.')
 
   if not args.email_server:
     args.email_server = (input(
-      'Please enter the address of the email server to use to send alerts: ')
-      .strip())
+        'Please enter the address of the email server to use to send alerts: ')
+                         .strip())
   if not args.email_user:
     args.email_user = (input(
-      'Please enter the username for authenticating with the email server: ')
-      .strip())
+        'Please enter the username for authenticating with the email server: ')
+                       .strip())
   if not args.email_password:
     args.email_password = (input(
-      'Please enter the password for authenticating with the email server: ')
-      .strip())
+        'Please enter the password for authenticating with the email server: ')
+                           .strip())
   if not args.alert_recipients:
     args.alert_recipients = (input(
-      'Please enter a comma-separated list of email addresses to send the '
-      'alerts to: ')).strip()
+        'Please enter a comma-separated list of email addresses to send the '
+        'alerts to: ')).strip()
 
   deploy_scheduled_materialize_query(project_id, args.region, args.ga_property)
   deploy_p75_procedure(project_id, args.ga_property)
-  deploy_cloudrun_alerter()
+  deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
+                          args.cls_threshold, args.fid_threshold,
+                          args.email_server, args.email_user,
+                          args.email_password, args.email_from,
+                          args.alert_recipients)
   create_cloudrun_trigger()
 
 
