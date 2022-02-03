@@ -28,6 +28,11 @@ import google.auth
 from google.auth.credentials import Credentials
 from google.cloud import bigquery
 from google.cloud import bigquery_datatransfer
+from google.cloud import eventarc
+from google.cloud.eventarc_v1.types.trigger import CloudRun
+from google.cloud.eventarc_v1.types.trigger import Destination
+from google.cloud.eventarc_v1.types.trigger import EventFilter
+import googleapiclient
 from googleapiclient import discovery
 
 
@@ -343,8 +348,66 @@ def deploy_cloudrun_alerter(ga_property: str, region: str, lcp_threshold: int,
                      'trying again.') from cpe
 
 
-def create_cloudrun_trigger():
-  pass
+def create_cloudrun_trigger(project_id: str, region: str, service_account: str):
+  """Creates the trigger to check if an alert email should be sent.
+
+  This creates a trigger named cwv-alert-email-trigger that fires when a
+  BigQuery insert job completes. It deletes the trigger with the same name if
+  it exists first.
+
+  Args:
+    project_id: The GCP project ID the trigger is being deployed to.
+    region: The region to create the trigger in.
+    service_account: The service account to assign the trigger.
+  """
+  trigger_name = (f'projects/{project_id}/locations/{region}/triggers/'
+                  'cwv-alert-email-trigger')
+  eventarc_client = eventarc.EventarcClient()
+
+  eventarc_client.delete_trigger(name=trigger_name, allow_missing=True)
+
+  destination = Destination(cloud_run=CloudRun(service='cwv-alerting-service',
+                                               region=region))
+  event_filters = [
+      EventFilter(attribute='type', value='google.cloud.audit.log.v1.written'),
+      EventFilter(attribute='serviceName', value='bigquery.googleapis.com'),
+      EventFilter(attribute='methodName',
+                  value='google.cloud.bigquery.v2.JobService.InsertJob')]
+
+  new_trigger = eventarc.Trigger(name=trigger_name,
+                                 destination=destination,
+                                 service_account=service_account,
+                                 event_filters=event_filters)
+  parent = eventarc_client.common_location_path(project=project_id,
+                                                location=region)
+  try:
+    eventarc_client.create_trigger(parent=parent, trigger=new_trigger,
+                                   trigger_id='cwv-alert-email-trigger')
+  except Exception as ex:
+    print(ex, file=sys.stderr)
+    raise SystemExit('The event trigger was not created. Please check the '
+                     'errors above and ensure the service account you are using'
+                     ' has the correct roles (e.g. oles/eventarc.eventReceiver'
+                     ) from ex
+
+
+def get_default_service_account(project_id: str, credentials: Credentials):
+  """Gets the email address for the default iam service account.
+
+  Args:
+    project_id: The GCP project to get the default account for.
+    credentials: The credentials to use to authenticate.
+
+  Returns:
+    The email address of the default compute iam service account.
+  """
+  service = googleapiclient.discovery.build('iam', 'v1',
+                                            credentials=credentials)
+  service_accounts = service.projects().serviceAccounts.list(
+      name=f'projects/{project_id}').execute()
+  for account in service_accounts['accounts']:
+    if account['displayName'] == 'Default compute service account':
+      return account['email']
 
 
 def main():
@@ -387,6 +450,20 @@ def main():
   arg_parser.add_argument('-a', '--alert-recipients',
                           help=('A comma-separated list of email addresses to '
                                 'send the alerts to.'))
+  arg_parser.add_argument('-i', '--iam-service-account',
+                          help=('The email of the IAM service account to use '
+                                'when authenticating calls to the email '
+                                'alerting function. Please note that this '
+                                'account requires roles/eventarc.eventReceiver.'
+                                ' If not provided, the default compute service '
+                                'account is used.'))
+  arg_parser.add_argument('--email-alert',
+                          help='Flag for deploying the email alerting service',
+                          action='store_true', dest='email_alert')
+  arg_parser.add_argument('--no-email-alert',
+                          help='Flag to not deploy the email alerting service',
+                          action='store_false', dest='email_alert')
+  arg_parser.set_defaults(email_alert=True)
 
   args = arg_parser.parse_args()
 
@@ -410,31 +487,42 @@ def main():
     if not args.ga_property.isdigit():
       raise SystemExit('Only GA4 properties are supported at this time.')
 
-  if not args.email_server:
-    args.email_server = (input(
-        'Please enter the address of the email server to use to send alerts: ')
-                         .strip())
-  if not args.email_user:
-    args.email_user = (input(
-        'Please enter the username for authenticating with the email server: ')
-                       .strip())
-  if not args.email_password:
-    args.email_password = (input(
-        'Please enter the password for authenticating with the email server: ')
-                           .strip())
-  if not args.alert_recipients:
-    args.alert_recipients = (input(
-        'Please enter a comma-separated list of email addresses to send the '
-        'alerts to: ')).strip()
-
   deploy_scheduled_materialize_query(project_id, args.region, args.ga_property)
-  deploy_p75_procedure(project_id, args.ga_property)
-  deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
-                          args.cls_threshold, args.fid_threshold,
-                          args.email_server, args.email_user,
-                          args.email_password, args.email_from,
-                          args.alert_recipients)
-  create_cloudrun_trigger()
+
+  if args.email_alert:
+    if not args.email_server:
+      args.email_server = (input(
+          'Please enter the address of the email server to use to send alerts: ')
+                           .strip())
+    if not args.email_user:
+      args.email_user = (input(
+          'Please enter the username for authenticating with the email server: ')
+                         .strip())
+    if not args.email_password:
+      args.email_password = (input(
+          'Please enter the password for authenticating with the email server: ')
+                             .strip())
+    if not args.alert_recipients:
+      args.alert_recipients = (input(
+          'Please enter a comma-separated list of email addresses to send the '
+          'alerts to: ')).strip()
+    if not args.iam_service_account:
+      if hasattr(credentials, 'service_account_email'):
+        args.iam_service_account = credentials.service_account_email
+        if args.iam_service_account == 'default':
+          args.iam_service_account = get_default_service_account(project_id,
+                                                                 credentials)
+      else:
+        args.iam_service_account = (input(
+            'Please enter the email of the service account to use: ')).strip()
+
+    deploy_p75_procedure(project_id, args.ga_property)
+    deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
+                            args.cls_threshold, args.fid_threshold,
+                            args.email_server, args.email_user,
+                            args.email_password, args.email_from,
+                            args.alert_recipients)
+    create_cloudrun_trigger(project_id, args.region, args.iam_service_account)
 
 
 if __name__ == '__main__':
