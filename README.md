@@ -25,7 +25,7 @@ Before you start, you will require the following:
 
 -   A Google Cloud Project with a billing account associated with it.
 -   A Google Analytics 4 account
--   An SMTP (i.e. email) server 
+-   (_Optional_) An SMTP (i.e. email) server 
 
 ### The Information You'll Need {#info-you-need}
 
@@ -38,7 +38,8 @@ solution:
     Settings tab in the Property details box.
 1.  Your Core Web Vitals performance budget. You will need this to set the 
     thresholds for when an alert email is sent.
-1.  The details for your SMTP server. This includes:
+1.  If deploying the email alerting service, the details for your SMTP server. 
+This includes:
     +   the server's address.
     +   the username and password to use when authenticating with the server.
     +   the email address to use as the alert sender.

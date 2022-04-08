@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """Deployment script for CWV in GA4 solution.
 
  Deploys the SQL tables and scripts needed to collect CWVs according to the
@@ -75,21 +74,18 @@ def delete_scheduled_query(display_name: str, project_id: str, region: str):
     region: the region the query is stored in.
   """
   transfer_client = bigquery_datatransfer.DataTransferServiceClient()
-  parent = transfer_client.common_location_path(project=project_id,
-                                                location=region)
+  parent = transfer_client.common_location_path(
+      project=project_id, location=region)
   transfer_config_req = bigquery_datatransfer.ListTransferConfigsRequest(
-      parent=parent,
-      data_source_ids=['scheduled_query'])
+      parent=parent, data_source_ids=['scheduled_query'])
   configs = transfer_client.list_transfer_configs(request=transfer_config_req)
   for config in configs:
     if config.display_name == display_name:
       transfer_client.delete_transfer_config(name=config.name)
 
 
-def deploy_scheduled_materialize_query(
-    project_id: str,
-    region: str,
-    ga_property: str) -> None:
+def deploy_scheduled_materialize_query(project_id: str, region: str,
+                                       ga_property: str) -> None:
   """Deploys the query to create the materialized CWV summary table.
 
   The scheduled query is given the name "Update Web Vitals Summary" and any
@@ -103,7 +99,7 @@ def deploy_scheduled_materialize_query(
   """
   display_name = 'Update Web Vitals Summary'
 
-  materialize_query = f'''
+  materialize_query = f"""
 -- Copyright 2021 Google LLC
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -220,14 +216,14 @@ FROM
   )
 CROSS JOIN UNNEST(events) AS evt
 WHERE evt.event_name NOT IN ('first_visit', 'purchase');
-  '''
+  """
 
-  delete_scheduled_query(display_name=display_name, project_id=project_id,
-                         region=region)
+  delete_scheduled_query(
+      display_name=display_name, project_id=project_id, region=region)
 
   transfer_client = bigquery_datatransfer.DataTransferServiceClient()
-  parent = transfer_client.common_location_path(project=project_id,
-                                                location=region)
+  parent = transfer_client.common_location_path(
+      project=project_id, location=region)
   transfer_config = bigquery_datatransfer.TransferConfig(
       display_name=display_name,
       data_source_id='scheduled_query',
@@ -239,10 +235,7 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
 
   transfer_config = transfer_client.create_transfer_config(
       bigquery_datatransfer.CreateTransferConfigRequest(
-          parent=parent,
-          transfer_config=transfer_config
-      )
-  )
+          parent=parent, transfer_config=transfer_config))
 
 
 def deploy_p75_procedure(project_id: str, ga_property: str):
@@ -256,7 +249,7 @@ def deploy_p75_procedure(project_id: str, ga_property: str):
     ga_property: The GA property used to collect the CWV data.
   """
 
-  p75_procedure = f'''CREATE OR REPLACE
+  p75_procedure = f"""CREATE OR REPLACE
   PROCEDURE analytics_{ga_property}.get_cwv_p75_for_date(start_date date, num_days INT64) BEGIN
 SELECT
   metric_name, APPROX_QUANTILES(metric_value, 100)[OFFSET(75)] AS p75, COUNT(1) AS count
@@ -268,7 +261,7 @@ WHERE
 GROUP BY 1;
 
 END
-  '''
+  """
 
   bq_client = bigquery.Client()
   query_job = bq_client.query(p75_procedure)
@@ -303,7 +296,7 @@ def deploy_cloudrun_alerter(ga_property: str, region: str, lcp_threshold: int,
   Args:
     ga_property: The GA property used to collect the CWV data.
     region: The region to deploy the function to. This must be the same region
-            the CWV data is stored in in BQ.
+      the CWV data is stored in in BQ.
     lcp_threshold: The threshold LCP value to send the email for.
     cls_threshold: The threshold CLS value to send the email for.
     fid_threshold: The threshold FID value to send the email for.
@@ -327,21 +320,21 @@ def deploy_cloudrun_alerter(ga_property: str, region: str, lcp_threshold: int,
               f'EMAIL_FROM={email_from}:'
               f'ALERT_RECEIVERS={alert_recipients}')
 
-  source_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                            'notifications')
+  source_dir = os.path.join(
+      os.path.dirname(os.path.realpath(__file__)), 'notifications')
   if not os.path.isdir(source_dir):
-    print('Source directory for the email notification function not found.',
-          file=sys.stderr)
+    print(
+        'Source directory for the email notification function not found.',
+        file=sys.stderr)
     raise SystemExit('Please ensure the deploy script is in the distribution '
                      'directory as delivered.')
 
   try:
-    subprocess.run(['gcloud', 'run', 'deploy', 'cwv-alerting-service',
-                    f'--region={region}',
-                    f'--set-env-vars={env_vars}',
-                    '--source', source_dir],
-                   check=True
-                   )
+    subprocess.run([
+        'gcloud', 'run', 'deploy', 'cwv-alerting-service', f'--region={region}',
+        f'--set-env-vars={env_vars}', '--source', source_dir
+    ],
+                   check=True)
   except subprocess.CalledProcessError as cpe:
     raise SystemExit('Deploying the email alerting function failed. Please '
                      'check the messages above and correct any issues before '
@@ -366,29 +359,34 @@ def create_cloudrun_trigger(project_id: str, region: str, service_account: str):
 
   eventarc_client.delete_trigger(name=trigger_name, allow_missing=True)
 
-  destination = Destination(cloud_run=CloudRun(service='cwv-alerting-service',
-                                               region=region))
+  destination = Destination(
+      cloud_run=CloudRun(service='cwv-alerting-service', region=region))
   event_filters = [
       EventFilter(attribute='type', value='google.cloud.audit.log.v1.written'),
       EventFilter(attribute='serviceName', value='bigquery.googleapis.com'),
-      EventFilter(attribute='methodName',
-                  value='google.cloud.bigquery.v2.JobService.InsertJob')]
+      EventFilter(
+          attribute='methodName',
+          value='google.cloud.bigquery.v2.JobService.InsertJob')
+  ]
 
-  new_trigger = eventarc.Trigger(name=trigger_name,
-                                 destination=destination,
-                                 service_account=service_account,
-                                 event_filters=event_filters)
-  parent = eventarc_client.common_location_path(project=project_id,
-                                                location=region)
+  new_trigger = eventarc.Trigger(
+      name=trigger_name,
+      destination=destination,
+      service_account=service_account,
+      event_filters=event_filters)
+  parent = eventarc_client.common_location_path(
+      project=project_id, location=region)
   try:
-    eventarc_client.create_trigger(parent=parent, trigger=new_trigger,
-                                   trigger_id='cwv-alert-email-trigger')
+    eventarc_client.create_trigger(
+        parent=parent,
+        trigger=new_trigger,
+        trigger_id='cwv-alert-email-trigger')
   except Exception as ex:
     print(ex, file=sys.stderr)
-    raise SystemExit('The event trigger was not created. Please check the '
-                     'errors above and ensure the service account you are using'
-                     ' has the correct roles (e.g. oles/eventarc.eventReceiver'
-                     ) from ex
+    raise SystemExit(
+        'The event trigger was not created. Please check the '
+        'errors above and ensure the service account you are using'
+        ' has the correct roles (e.g. oles/eventarc.eventReceiver') from ex
 
 
 def get_default_service_account(project_id: str, credentials: Credentials):
@@ -401,9 +399,9 @@ def get_default_service_account(project_id: str, credentials: Credentials):
   Returns:
     The email address of the default compute iam service account.
   """
-  service = googleapiclient.discovery.build('iam', 'v1',
-                                            credentials=credentials)
-  service_accounts = service.projects().serviceAccounts.list(
+  service = googleapiclient.discovery.build(
+      'iam', 'v1', credentials=credentials)
+  service_accounts = service.projects().serviceAccounts().list(
       name=f'projects/{project_id}').execute()
   for account in service_accounts['accounts']:
     if account['displayName'] == 'Default compute service account':
@@ -421,48 +419,76 @@ def main():
   """
   arg_parser = argparse.ArgumentParser(
       description='Deploys the CWV in GA solution')
-  arg_parser.add_argument('-g', '--ga-property', type=int,
-                          help=('The GA property ID to use when looking for '
-                                'exports in big query.'))
-  arg_parser.add_argument('-r', '--region',
-                          help='The region GA data is being exported to.')
-  arg_parser.add_argument('-l', '--lcp-threshold', default=2500,
-                          help=('The value to use as the threshold for a good '
-                                'LCP score in ms (default %(default)d).'))
-  arg_parser.add_argument('-f', '--fid-threshold', default=100,
-                          help=('The value to use as a threshold for a good FID'
-                                ' score in ms (default %(default)d)'))
-  arg_parser.add_argument('-c', '--cls-threshold', default=0.1,
-                          help=('The value to use as a threshold for a good CLS'
-                                ' score (unit-less)(default %(default)1.1f)'))
-  arg_parser.add_argument('-s', '--email-server',
-                          help=('The address of the email server to use to send'
-                                ' alerts.'))
-  arg_parser.add_argument('-u', '--email-user',
-                          help=('The username to use to authenticate with the '
-                                'email server.'))
-  arg_parser.add_argument('-p', '--email-password',
-                          help=('The password to use to authenticate with the '
-                                'email server'))
-  arg_parser.add_argument('-e', '--email-from',
-                          help=('The email address used in the from field of '
-                                'the alert'))
-  arg_parser.add_argument('-a', '--alert-recipients',
-                          help=('A comma-separated list of email addresses to '
-                                'send the alerts to.'))
-  arg_parser.add_argument('-i', '--iam-service-account',
-                          help=('The email of the IAM service account to use '
-                                'when authenticating calls to the email '
-                                'alerting function. Please note that this '
-                                'account requires roles/eventarc.eventReceiver.'
-                                ' If not provided, the default compute service '
-                                'account is used.'))
-  arg_parser.add_argument('--email-alert',
-                          help='Flag for deploying the email alerting service',
-                          action='store_true', dest='email_alert')
-  arg_parser.add_argument('--no-email-alert',
-                          help='Flag to not deploy the email alerting service',
-                          action='store_false', dest='email_alert')
+  arg_parser.add_argument(
+      '-g',
+      '--ga-property',
+      type=int,
+      help=('The GA property ID to use when looking for '
+            'exports in big query.'))
+  arg_parser.add_argument(
+      '-r', '--region', help='The region GA data is being exported to.')
+  arg_parser.add_argument(
+      '-l',
+      '--lcp-threshold',
+      default=2500,
+      help=('The value to use as the threshold for a good '
+            'LCP score in ms (default %(default)d).'))
+  arg_parser.add_argument(
+      '-f',
+      '--fid-threshold',
+      default=100,
+      help=('The value to use as a threshold for a good FID'
+            ' score in ms (default %(default)d)'))
+  arg_parser.add_argument(
+      '-c',
+      '--cls-threshold',
+      default=0.1,
+      help=('The value to use as a threshold for a good CLS'
+            ' score (unit-less)(default %(default)1.1f)'))
+  arg_parser.add_argument(
+      '-s',
+      '--email-server',
+      help=('The address of the email server to use to send'
+            ' alerts.'))
+  arg_parser.add_argument(
+      '-u',
+      '--email-user',
+      help=('The username to use to authenticate with the '
+            'email server.'))
+  arg_parser.add_argument(
+      '-p',
+      '--email-password',
+      help=('The password to use to authenticate with the '
+            'email server'))
+  arg_parser.add_argument(
+      '-e',
+      '--email-from',
+      help=('The email address used in the from field of '
+            'the alert'))
+  arg_parser.add_argument(
+      '-a',
+      '--alert-recipients',
+      help=('A comma-separated list of email addresses to '
+            'send the alerts to.'))
+  arg_parser.add_argument(
+      '-i',
+      '--iam-service-account',
+      help=('The email of the IAM service account to use '
+            'when authenticating calls to the email '
+            'alerting function. Please note that this '
+            'account requires roles/eventarc.eventReceiver.'
+            ' If not provided, the default compute service '
+            'account is used.'))
+  arg_parser.add_argument(
+      '--email-alert',
+      help='Flag for deploying the email alerting service',
+      action='store_true',
+      dest='email_alert')
+  arg_parser.add_argument(
+      '--no-email-alert',
+      help='Flag to not deploy the email alerting service',
+      action='store_false',
+      dest='email_alert')
   arg_parser.set_defaults(email_alert=True)
 
   args = arg_parser.parse_args()
@@ -477,13 +503,15 @@ def main():
     while args.region == 'list':
       region_list = get_gcp_regions(credentials, project_id)
       print('\n'.join(region_list))
-      args.region = (input(
-          'Which region is the GA export in (list for a list of regions)? ')
-                     .strip())
+      args.region = (
+          input(
+              'Which region is the GA export in (list for a list of regions)? ')
+          .strip())
   if not args.ga_property:
-    args.ga_property = (input(
-        'Please enter the GA property ID you are collecting CWV data with: ')
-                        .strip())
+    args.ga_property = (
+        input(
+            'Please enter the GA property ID you are collecting CWV data with: '
+        ).strip())
     if not args.ga_property.isdigit():
       raise SystemExit('Only GA4 properties are supported at this time.')
 
@@ -491,38 +519,43 @@ def main():
 
   if args.email_alert:
     if not args.email_server:
-      args.email_server = (input(
-          'Please enter the address of the email server to use to send alerts: ')
-                           .strip())
-    if not args.email_user:
-      args.email_user = (input(
-          'Please enter the username for authenticating with the email server: ')
-                         .strip())
-    if not args.email_password:
-      args.email_password = (input(
-          'Please enter the password for authenticating with the email server: ')
-                             .strip())
-    if not args.alert_recipients:
-      args.alert_recipients = (input(
-          'Please enter a comma-separated list of email addresses to send the '
-          'alerts to: ')).strip()
+      args.email_server = input(
+          'Please enter the address of the email server to use to send alerts '
+          '(leave empty to not deploy the email alerting function): ').strip()
+    if args.email_server:
+      if not args.email_user:
+        args.email_user = input(
+            'Please enter the username for authenticating with the email '
+            'server: ').strip()
+      if not args.email_password:
+        args.email_password = input(
+            'Please enter the password for authenticating with the email '
+            'server: ').strip()
+      if not args.email_from:
+        args.email_from = input(
+            'Please enter the email address to use in the FROM field: ').strip()
+      if not args.alert_recipients:
+        args.alert_recipients = input(
+            'Please enter a comma-separated list of email addresses to send '
+            'the alerts to: ').strip()
     if not args.iam_service_account:
       if hasattr(credentials, 'service_account_email'):
         args.iam_service_account = credentials.service_account_email
         if args.iam_service_account == 'default':
-          args.iam_service_account = get_default_service_account(project_id,
-                                                                 credentials)
+          args.iam_service_account = get_default_service_account(
+              project_id, credentials)
       else:
-        args.iam_service_account = (input(
-            'Please enter the email of the service account to use: ')).strip()
+        args.iam_service_account = input(
+            'Please enter the email of the service account to use: ').strip()
 
     deploy_p75_procedure(project_id, args.ga_property)
-    deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
-                            args.cls_threshold, args.fid_threshold,
-                            args.email_server, args.email_user,
-                            args.email_password, args.email_from,
-                            args.alert_recipients)
-    create_cloudrun_trigger(project_id, args.region, args.iam_service_account)
+    if args.email_server:
+      deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
+                              args.cls_threshold, args.fid_threshold,
+                              args.email_server, args.email_user,
+                              args.email_password, args.email_from,
+                              args.alert_recipients)
+      create_cloudrun_trigger(project_id, args.region, args.iam_service_account)
 
 
 if __name__ == '__main__':
