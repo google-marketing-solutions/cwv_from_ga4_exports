@@ -533,11 +533,28 @@ def main():
             'server: ').strip()
       if not args.email_from:
         args.email_from = input(
-            'Please enter the email address to use in the FROM field: ').strip()
+            'Please enter the email address to use in the FROM field: ').strip(
+            )
       if not args.alert_recipients:
         args.alert_recipients = input(
             'Please enter a comma-separated list of email addresses to send '
             'the alerts to: ').strip()
+      # only ask if no args were used, since the defaults will otherwise be used
+      if len(sys.argv) == 1:
+        args.lcp_threshold = input(
+            'Please enter the alert threshold for LCP in ms (default 2500): '
+        ).strip()
+      if not args.lcp_threshold:
+        args.lcp_threshold = 2055
+      args.fid_threshold = input(
+          'Please enter the alert threshold for FID in ms (default 100): '
+      ).strip()
+      if not args.fid_threshold:
+        args.fid_threshold = 100
+      args.cls_threshold = input(
+          'Please enter the threshold for CLS (default 0.1): ').strip()
+      if not args.cls_threshold:
+        args.cls_threshold = 0.1
     if not args.iam_service_account:
       if hasattr(credentials, 'service_account_email'):
         args.iam_service_account = credentials.service_account_email

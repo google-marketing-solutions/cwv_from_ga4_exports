@@ -14,5 +14,5 @@
 # Installs the packages required to run the deployment script, and then runs the
 # deployment script.
 
-python3 -m pip install -r requirements.txt
+python3 -m pip -q install -U -r requirements.txt
 python3 ./deploy.py
