@@ -17,9 +17,9 @@ limitations under the License
 This solution makes it simple to get started with reporting on Core Web Vitals 
 being exported from GA4 into Big Query.
 
-## Prerequisites {#prerequisites}
+## Prerequisites
 
-### Before You Start {#before-you-start}
+### Before You Start
 
 Before you start, you will require the following:
 
@@ -27,7 +27,7 @@ Before you start, you will require the following:
 -   A Google Analytics 4 account
 -   (_Optional_) An SMTP (i.e. email) server 
 
-### The Information You'll Need {#info-you-need}
+### The Information You'll Need
 
 You will need all of the following information to be able to deploy the 
 solution:
@@ -45,12 +45,12 @@ This includes:
     +   the email address to use as the alert sender.
     +   the email addresses to send the alert to.
     
-## Getting Core Web Vitals into BigQuery {#cwv-into-bq}
+## Getting Core Web Vitals into BigQuery
 
 For the solution to work, you first need to report CWV metrics to GA4. From GA4,
 the data then needs to be exported to BigQuery.
 
-### Sending CWV Data to GA4 {#sending-cwv-to-ga}
+### Sending CWV Data to GA4
 
 The standard way to send CWV data to GA4 is by using 
 [the web-vitals JavaScript library](https://github.com/GoogleChrome/web-vitals).
@@ -64,7 +64,7 @@ on sending the metrics to GA via GTM.
 sure to ensure the resulting tables in BigQuery match those that would be 
 present if you were using the standard reporting.
 
-### Exporting CWV Data to BigQuery {#export-cwv-to-bq}
+### Exporting CWV Data to BigQuery
 
 To export the CWV data to BigQuery, follow the 
 [directions](https://support.google.com/analytics/answer/9358801) in the GA4 
@@ -74,13 +74,13 @@ When you are setting up the export, you _must_ select the daily option. The
 daily tables are used by the solution, as well as by the standard dashboards. 
 The streaming (a.k.a. intraday) tables are optional.
 
-## Deploying the Solution {#deploying}
+## Deploying the Solution
 
 Once you have CWV data in BigQuery, you can use this solution to create summary
 tables in BigQuery and send alert emails when the CWv values don't meet your 
 targets.
 
-### Deployment Steps {#deployment-steps}
+### Deployment Steps
 
 To deploy the solution:
 
@@ -106,7 +106,7 @@ prompt upon successful completion.
 significant amount of time (up to 30 minutes). Please be sure that your 
 connection will not timeout during the first deployment.
 
-### Updating Your Deployment {#updating-deployment}
+### Updating Your Deployment
 
 To update any of the details you entered during the deployment, including CWV 
 thresholds, please re-run the install script. 
@@ -115,7 +115,7 @@ For security reasons, none of the
 information you enter is saved outside the deployed container and cannot be 
 reused during subsequent deployments.
 
-## Visualizing Your Data {#visualizing-data}
+## Visualizing Your Data
 
 Once you have the solution deployed, you should see a table named 
 _web_vitals_summary_ in your GCP project's BigQuery tables. You can use this 
