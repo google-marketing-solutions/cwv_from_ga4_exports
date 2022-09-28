@@ -28,11 +28,37 @@ from google.auth.credentials import Credentials
 from google.cloud import bigquery
 from google.cloud import bigquery_datatransfer
 from google.cloud import eventarc
+from google.cloud import service_usage_v1
+
 from google.cloud.eventarc_v1.types.trigger import CloudRun
 from google.cloud.eventarc_v1.types.trigger import Destination
 from google.cloud.eventarc_v1.types.trigger import EventFilter
 import googleapiclient
 from googleapiclient import discovery
+
+
+def enable_services(credentials: Credentials, project_id: str):
+  """Enables the services required to use the solution.
+
+  Args:
+    credentials: the Google credentials to use to authenticate.
+    project_id: the project the services will be enabled for.
+  """
+  crm = discovery.build('cloudresourcemanager', 'v3')
+  project = crm.projects().get(name='projects/' + project_id).execute()
+  client = service_usage_v1.ServiceUsageClient(credentials=credentials)
+  request = service_usage_v1.BatchEnableServicesRequest()
+  request.parent = project['name']
+  request.service_ids = [
+      'compute.googleapis.com',
+      'bigquerydatatransfer.googleapis.com'
+  ]
+  operation = client.batch_enable_services(request=request)
+  try:
+    operation.result()
+  except google.api_core.GoogleAPICallError as ex:
+    raise SystemExit('Unable to enable the required services. Please check the'
+                     ' logs and resolve the issues found there.') from ex
 
 
 def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
@@ -65,8 +91,8 @@ def get_gcp_regions(credentials: Credentials, project_id: str) -> List[str]:
 def delete_scheduled_query(display_name: str, project_id: str, region: str):
   """Deletes the BigQuery scheduled queries with the given display name.
 
-  Please note that the display name of a BigQuery scheduled query is not unique.
-  This means that multiple queries can be deleted.
+  Please note that the display name of a BigQuery scheduled query is not
+  unique. This means that multiple queries can be deleted.
 
   Args:
     display_name: the name of the config to delete.
@@ -268,7 +294,8 @@ END
 
   def query_done_callback(job):
     if job.error_result:
-      print('There was an error deploying the p75 procedure: ', file=sys.stderr)
+      print('There was an error deploying the p75 procedure: ',
+            file=sys.stderr)
       for error_key in job.error_result.keys():
         for error in job.error_result[error_key]:
           print(error, file=sys.stderr)
@@ -331,17 +358,19 @@ def deploy_cloudrun_alerter(ga_property: str, region: str, lcp_threshold: int,
 
   try:
     subprocess.run([
-        'gcloud', 'run', 'deploy', 'cwv-alerting-service', f'--region={region}',
-        f'--set-env-vars={env_vars}', '--source', source_dir
+        'gcloud', 'run', 'deploy', 'cwv-alerting-service',
+        f'--region={region}', f'--set-env-vars={env_vars}',
+        '--source', source_dir
     ],
-                   check=True)
+        check=True)
   except subprocess.CalledProcessError as cpe:
     raise SystemExit('Deploying the email alerting function failed. Please '
                      'check the messages above and correct any issues before '
                      'trying again.') from cpe
 
 
-def create_cloudrun_trigger(project_id: str, region: str, service_account: str):
+def create_cloudrun_trigger(
+        project_id: str, region: str, service_account: str):
   """Creates the trigger to check if an alert email should be sent.
 
   This creates a trigger named cwv-alert-email-trigger that fires when a
@@ -389,7 +418,8 @@ def create_cloudrun_trigger(project_id: str, region: str, service_account: str):
         ' has the correct roles (e.g. oles/eventarc.eventReceiver') from ex
 
 
-def get_default_service_account(project_id: str, credentials: Credentials):
+def get_default_service_account(
+        project_id: str, credentials: Credentials) -> str:
   """Gets the email address for the default iam service account.
 
   Args:
@@ -497,6 +527,8 @@ def main():
   if not project_id:
     project_id = os.environ['GOOGLE_CLOUD_PROJECT']
 
+  enable_services(credentials, project_id)
+
   if not args.region:
     args.region = input(
         'Which region should be deployed to (type list for a list)? ').strip()
@@ -505,8 +537,8 @@ def main():
       print('\n'.join(region_list))
       args.region = (
           input(
-              'Which region is the GA export in (list for a list of regions)? ')
-          .strip())
+              'Which region is the GA export in (list for a list of regions)? '
+          ).strip())
   if not args.ga_property:
     args.ga_property = (
         input(
@@ -534,12 +566,12 @@ def main():
       if not args.email_from:
         args.email_from = input(
             'Please enter the email address to use in the FROM field: ').strip(
-            )
+        )
       if not args.alert_recipients:
         args.alert_recipients = input(
             'Please enter a comma-separated list of email addresses to send '
             'the alerts to: ').strip()
-      # only ask if no args were used, since the defaults will otherwise be used
+      # only ask if no args were used, defaults will otherwise be used
       if len(sys.argv) == 1:
         args.lcp_threshold = input(
             'Please enter the alert threshold for LCP in ms (default 2500): '
@@ -567,12 +599,13 @@ def main():
 
     deploy_p75_procedure(project_id, args.ga_property)
     if args.email_server:
-      deploy_cloudrun_alerter(args.ga_property, args.region, args.lcp_threshold,
-                              args.cls_threshold, args.fid_threshold,
-                              args.email_server, args.email_user,
-                              args.email_password, args.email_from,
-                              args.alert_recipients)
-      create_cloudrun_trigger(project_id, args.region, args.iam_service_account)
+      deploy_cloudrun_alerter(args.ga_property, args.region,
+                              args.lcp_threshold, args.cls_threshold,
+                              args.fid_threshold, args.email_server,
+                              args.email_user, args.email_password,
+                              args.email_from, args.alert_recipients)
+      create_cloudrun_trigger(project_id, args.region,
+                              args.iam_service_account)
 
 
 if __name__ == '__main__':
