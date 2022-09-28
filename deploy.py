@@ -110,7 +110,8 @@ def delete_scheduled_query(display_name: str, project_id: str, region: str):
       transfer_client.delete_transfer_config(name=config.name)
 
 
-def deploy_scheduled_materialize_query(project_id: str, region: str,
+def deploy_scheduled_materialize_query(project_id: str,
+                                       credentials: Credentials, region: str,
                                        ga_property: str) -> None:
   """Deploys the query to create the materialized CWV summary table.
 
@@ -247,7 +248,8 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
   delete_scheduled_query(
       display_name=display_name, project_id=project_id, region=region)
 
-  transfer_client = bigquery_datatransfer.DataTransferServiceClient()
+  transfer_client = bigquery_datatransfer.DataTransferServiceClient(
+      credentials=credentials)
   parent = transfer_client.common_location_path(
       project=project_id, location=region)
   transfer_config = bigquery_datatransfer.TransferConfig(
@@ -259,9 +261,11 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
       schedule='every 24 hours',
   )
 
+  service_account = get_default_service_account(project_id, credentials)
   transfer_config = transfer_client.create_transfer_config(
       bigquery_datatransfer.CreateTransferConfigRequest(
-          parent=parent, transfer_config=transfer_config))
+          parent=parent, transfer_config=transfer_config,
+          service_account_name=service_account))
 
 
 def deploy_p75_procedure(project_id: str, ga_property: str):
@@ -434,7 +438,8 @@ def get_default_service_account(
   service_accounts = service.projects().serviceAccounts().list(
       name=f'projects/{project_id}').execute()
   for account in service_accounts['accounts']:
-    if account['displayName'] == 'Default compute service account':
+    display_name = account['displayName'].lower()
+    if display_name.find('default') != -1:
       return account['email']
 
 
@@ -547,7 +552,8 @@ def main():
     if not args.ga_property.isdigit():
       raise SystemExit('Only GA4 properties are supported at this time.')
 
-  deploy_scheduled_materialize_query(project_id, args.region, args.ga_property)
+  deploy_scheduled_materialize_query(project_id, credentials, args.region,
+                                     args.ga_property)
 
   if args.email_alert:
     if not args.email_server:
