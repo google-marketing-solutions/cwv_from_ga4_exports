@@ -111,8 +111,10 @@ def delete_scheduled_query(display_name: str, project_id: str, region: str):
 
 
 def deploy_scheduled_materialize_query(project_id: str,
-                                       credentials: Credentials, region: str,
-                                       ga_property: str) -> None:
+                                       credentials: Credentials, 
+                                       region: str,
+                                       ga_property: str,
+                                       service_account: str) -> None:
   """Deploys the query to create the materialized CWV summary table.
 
   The scheduled query is given the name "Update Web Vitals Summary" and any
@@ -261,7 +263,6 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
       schedule='every 24 hours',
   )
 
-  service_account = get_default_service_account(project_id, credentials)
   transfer_config = transfer_client.create_transfer_config(
       bigquery_datatransfer.CreateTransferConfigRequest(
           parent=parent, transfer_config=transfer_config,
@@ -551,9 +552,12 @@ def main():
         ).strip())
     if not args.ga_property.isdigit():
       raise SystemExit('Only GA4 properties are supported at this time.')
+    if not args.iam_service_account:
+        args.iam_service_account = input(
+            'Please enter the email of the service account to use: ').strip()
 
   deploy_scheduled_materialize_query(project_id, credentials, args.region,
-                                     args.ga_property)
+                                     args.ga_property, args.iam_service_account)
 
   if args.email_alert:
     if not args.email_server:
@@ -593,15 +597,6 @@ def main():
           'Please enter the threshold for CLS (default 0.1): ').strip()
       if not args.cls_threshold:
         args.cls_threshold = 0.1
-    if not args.iam_service_account:
-      if hasattr(credentials, 'service_account_email'):
-        args.iam_service_account = credentials.service_account_email
-        if args.iam_service_account == 'default':
-          args.iam_service_account = get_default_service_account(
-              project_id, credentials)
-      else:
-        args.iam_service_account = input(
-            'Please enter the email of the service account to use: ').strip()
 
     deploy_p75_procedure(project_id, args.ga_property)
     if args.email_server:
