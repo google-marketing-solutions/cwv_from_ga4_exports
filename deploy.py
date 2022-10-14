@@ -20,6 +20,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from typing import List
 
 import google.api_core.exceptions
@@ -266,6 +267,9 @@ WHERE evt.event_name NOT IN ('first_visit', 'purchase');
           parent=parent,
           transfer_config=transfer_config,
           service_account_name=service_account))
+  # wait 30 seconds for the query to complete. Otherwise anything depending on
+  # the table being created will fail.
+  time.sleep(30)
 
 
 def deploy_p75_procedure(project_id: str, ga_property: str):
@@ -437,17 +441,24 @@ def get_default_service_account_email(project_id: str,
   return ''
 
 
-def add_data_transerfer_role_to_service_account(
+def add_roles_to_service_account(
     service_account: str, project_id: str, credentials: Credentials) -> None:
   """Creates a new role with the permissions required to deploy the solution
   and it to the passed service account.
 
   The service account needs to have the correct permissions, and this is the
   most straightforward way of ensuring that. The permissions in the new role are
+  - bigquery.tables.get
+  - bigquery.tables.get
+  - bigquery.tables.getData
+  - bigquery.tables.list
+  - bigquery.tables.create
+  - bigquery.tables.update
+  - bigquery.tables.updateData
+  - bigquery.jobs.list
   - bigquery.jobs.create
   - bigquery.transfers.update
   - eventarc.events.receiveAuditLogWritten
-
   Args:
     service_account: The service account to add the role to.
     project_id: The project the new role will be created in.
@@ -472,7 +483,11 @@ def add_data_transerfer_role_to_service_account(
                 'title': 'CWV in GA4 Deployment role',
                 'description': 'Used to deploy the CWV ni GA4 solution.',
                 'includedPermissions': [
-                    'bigquery.jobs.create', 'bigquery.transfers.update',
+                    'bigquery.tables.get', 'bigquery.tables.getData',
+                    'bigquery.tables.list', 'bigquery.tables.create',
+                    'bigquery.tables.update', 'bigquery.tables.updateData',
+                    'bigquery.jobs.list', 'bigquery.jobs.create',
+                    'bigquery.transfers.update',
                     'eventarc.events.receiveAuditLogWritten'
                 ],
                 'stage': 'GA'
@@ -612,7 +627,7 @@ def main():
         f'use: [default {args.iam_service_account}]').strip()
 
     if not user_service_account:
-      add_data_transerfer_role_to_service_account(args.iam_service_account,
+      add_roles_to_service_account(args.iam_service_account,
                                                   project_id, credentials)
 
   deploy_scheduled_materialize_query(project_id, credentials, args.region,
