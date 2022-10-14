@@ -494,8 +494,11 @@ def add_data_transerfer_role_to_service_account(
                                            }).execute()
   policy['bindings'].append({
       'role': role['name'],
-      'members': [service_account]
+      'members': [f'serviceAccount:{service_account}']
   })
+  service.projects().setIamPolicy(resource=project_id, body={
+      "policy": policy
+  }).execute()
 
 
 def main():
