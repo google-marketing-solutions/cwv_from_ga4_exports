@@ -472,7 +472,11 @@ def add_data_transerfer_role_to_service_account(
                 'title': 'CWV in GA4 Deployment role',
                 'description': 'Used to deploy the CWV ni GA4 solution.',
                 'includedPermissions': [
-                    'bigquery.jobs.create', 'bigquery.transfers.update',
+                    'bigquery.tables.get', 'bigquery.tables.getData',
+                    'bigquery.tables.list', 'bigquery.tables.create',
+                    'bigquery.tables.update', 'bigquery.tables.updateData',
+                    'bigquery.jobs.list', 'bigquery.jobs.create',
+                    'bigquery.transfers.update',
                     'eventarc.events.receiveAuditLogWritten'
                 ],
                 'stage': 'GA'
@@ -587,6 +591,7 @@ def main():
       args.region = (input(
           'Which region is the GA export in (list for a list of regions)? ').
                      strip())
+
   if not args.ga_property:
     args.ga_property = (input(
         'Please enter the GA property ID you are collecting CWV data with: ').
@@ -595,22 +600,32 @@ def main():
       raise SystemExit('Only GA4 properties are supported at this time.')
 
   if not args.iam_service_account:
-    if (hasattr(credentials, 'service_account_email') and
-        credentials.service_account_email == 'default'):
-      args.iam_service_account = get_default_service_account_email(
-          project_id, credentials)
+    input_msg = 'Please enter the email of the service account to use: '
+    if hasattr(credentials, 'service_account_email'):
+      if credentials.service_account_email == 'default':
+        args.iam_service_account = get_default_service_account_email(
+           project_id, credentials)
+      else:
+        args.iam_service_account = credentials.service_account_email
+
+      input_msg = ('Please note: using the default service account, '
+        f'{args.iam_service_account}, will result in a new role being created '
+        'to allow for the creation and execution of BigQuery scheduled queries.'
+        '\n' + input_msg)
+
     else:
-      args.iam_service_account = credentials.service_account_email
+      input_msg = ('Please note: your default credentials do not provide a '
+      'service account. You must provide one here.\n' + input_msg)
 
-    user_service_account = input(
-        'Please note: using the default service account will result in a new '
-        'role being created to allow for the creation and execution of BigQuery'
-        ' scheduled queries.\nPlease enter the email of the service account to '
-        f'use: [default {args.iam_service_account}]').strip()
+    user_service_account = input(input_msg).strip()
 
-    if not user_service_account:
+    if not user_service_account and args.iam_service_account:
       add_data_transerfer_role_to_service_account(args.iam_service_account,
                                                   project_id, credentials)
+    else:
+      raise SystemExit('You must provide a service account for deploying and '
+        'running the solution to continue. Please create a service account and'
+        ' try again.')
 
   deploy_scheduled_materialize_query(project_id, credentials, args.region,
                                      args.ga_property, args.iam_service_account)
@@ -637,7 +652,9 @@ def main():
         args.alert_recipients = input(
             'Please enter a comma-separated list of email addresses to send '
             'the alerts to: ').strip()
-      # only ask if no args were used, defaults will otherwise be used
+
+      # only ask for CWV thresholds if no args were used, defaults will
+      # otherwise be used
       if len(sys.argv) == 1:
         args.lcp_threshold = input(
             'Please enter the alert threshold for LCP in ms (default 2500): '
