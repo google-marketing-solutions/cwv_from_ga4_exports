@@ -441,8 +441,8 @@ def get_default_service_account_email(project_id: str,
   return ''
 
 
-def add_roles_to_service_account(
-    service_account: str, project_id: str, credentials: Credentials) -> None:
+def add_roles_to_service_account(service_account: str, project_id: str,
+                                 credentials: Credentials) -> None:
   """Creates a new role with the permissions required to deploy the solution
   and it to the passed service account.
 
@@ -613,33 +613,41 @@ def main():
     if not args.ga_property.isdigit():
       raise SystemExit('Only GA4 properties are supported at this time.')
 
+  # the options are a service account email is provided with the default
+  # credentials, the word default is provided in place of an email address, or
+  # the service_account_email field isn't present at all on the credentials.
   if not args.iam_service_account:
     input_msg = 'Please enter the email of the service account to use: '
     if hasattr(credentials, 'service_account_email'):
       if credentials.service_account_email == 'default':
         args.iam_service_account = get_default_service_account_email(
-           project_id, credentials)
+            project_id, credentials)
       else:
         args.iam_service_account = credentials.service_account_email
 
-      input_msg = ('Please note: using the default service account, '
-        f'{args.iam_service_account}, will result in a new role being created '
-        'to allow for the creation and execution of BigQuery scheduled queries.'
-        '\n' + input_msg)
+      input_msg = (
+          'Please note: using the default service account, '
+          f'{args.iam_service_account}, will result in a new role being '
+          'created to allow for the creation and execution of BigQuery '
+          'scheduled queries.\n' + input_msg)
 
     else:
       input_msg = ('Please note: your default credentials do not provide a '
-      'service account. You must provide one here.\n' + input_msg)
+                   'service account. You must provide one here.\n' + input_msg)
 
     user_service_account = input(input_msg).strip()
 
-    if not user_service_account:
-      add_roles_to_service_account(args.iam_service_account,
-                                                  project_id, credentials)
+    if user_service_account:
+      args.iam_service_account = user_service_account
+
+    if args.iam_service_account:
+      add_roles_to_service_account(args.iam_service_account, project_id,
+                                   credentials)
     else:
-      raise SystemExit('You must provide a service account for deploying and '
-        'running the solution to continue. Please create a service account and'
-        ' try again.')
+      raise SystemExit(
+          'You must provide a service account for deploying and '
+          'running the solution to continue. Please create a service account '
+          'and try again.')
 
   deploy_scheduled_materialize_query(project_id, credentials, args.region,
                                      args.ga_property, args.iam_service_account)
