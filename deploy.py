@@ -232,7 +232,7 @@ FROM
               # Replace source table name
               `{project_id}.analytics_{ga_property}.events_*`
             WHERE
-              event_name IN ('LCP', 'FID', 'CLS', 'first_visit', 'purchase')
+              event_name IN ('LCP', 'FID', 'CLS', 'INP', 'TTFB', 'first_visit', 'purchase')
             GROUP BY
               1, 2
           )
