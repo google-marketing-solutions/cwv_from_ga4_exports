@@ -193,7 +193,7 @@ FROM
             SELECT
               (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')
                 AS ga_session_id,
-              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'metric_id')
+              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'web_vitals_measurement_id')
                 AS metric_id,
               ANY_VALUE(device.category) AS device_category,
               ANY_VALUE(device.operating_system) AS device_os,
@@ -231,7 +231,7 @@ FROM
             FROM
               `{project_id}.analytics_{ga_property}.events_*`
             WHERE
-              event_name IN ('LCP', 'FID', 'CLS', 'INP', 'first_visit', 'purchase')
+              event_name IN ('LCP', 'FID', 'CLS', 'INP', 'TTFB', 'first_visit', 'purchase')
             GROUP BY
               1, 2
           )

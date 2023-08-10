@@ -60,6 +60,18 @@ to send the metrics to GA4, or
 [the tutorial](https://www.simoahava.com/analytics/track-core-web-vitals-in-ga4-with-google-tag-manager/) 
 on sending the metrics to GA via GTM.
 
+If sending metrics directly to GA4, please use the naming convention specified
+by Simo Ahava in the instructions for using GTM. This means that the event
+parameters should be named
+
+* `web_vitals_measurement_name` for the metric name
+* `web_vitals_measurement_id` for the metric id
+* `web_vitals_measurement_value` for the metric value
+* `value` for the metric delta
+
+If you use other parameter names, you will need to update [deploy.py])https://github.com/google-marketing-solutions/cwv_from_ga4_exports/blob/main/deploy.py)
+to match the names you have chosen.
+
 **Please Note:** If you use a custom solution for reporting CWV data, please be
 sure to ensure the resulting tables in BigQuery match those that would be 
 present if you were using the standard reporting.
@@ -77,7 +89,7 @@ The streaming (a.k.a. intraday) tables are optional.
 ## Deploying the Solution
 
 Once you have CWV data in BigQuery, you can use this solution to create summary
-tables in BigQuery and send alert emails when the CWv values don't meet your 
+tables in BigQuery and send alert emails when the CWV values don't meet your 
 targets.
 
 ### Deployment Steps
