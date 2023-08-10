@@ -226,13 +226,12 @@ FROM
                 (
                   SELECT COALESCE(value.double_value, value.int_value)
                   FROM UNNEST(event_params)
-                  WHERE key = 'metric_value'
+                  WHERE key = 'web_vitals_measurement_value'
                 )) AS metric_value,
             FROM
-              # Replace source table name
               `{project_id}.analytics_{ga_property}.events_*`
             WHERE
-              event_name IN ('LCP', 'FID', 'CLS', 'INP', 'TTFB', 'first_visit', 'purchase')
+              event_name IN ('LCP', 'FID', 'CLS', 'INP', 'first_visit', 'purchase')
             GROUP BY
               1, 2
           )
