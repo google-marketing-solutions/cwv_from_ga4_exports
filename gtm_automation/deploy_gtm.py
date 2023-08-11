@@ -15,12 +15,13 @@ limitations under the License.
 import argparse
 import os
 
+import google.auth
 from google.cloud import service_usage_v1
 from google.oauth2.credentials import Credentials
-import google_auth_oauthlib
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient import discovery
 from googleapiclient import errors
-import oauth2client
+
 
 cwv_template_data = (
     "___TERMS_OF_SERVICE___\n\nBy creating or modifying this file you agree to"
@@ -113,7 +114,6 @@ def enable_tagmanager_api(project_id: str, credentials: Credentials):
     credentials: The credentials used to authenticate with GCP.
   """
   crm = discovery.build("cloudresourcemanager", "v3")
-  project = crm.projects().get(name="projects/" + project_id).execute()
   service_client = service_usage_v1.ServiceUsageClient(credentials=credentials)
   req = service_usage_v1.EnableServiceRequest()
   req.name = f"projects/{project_id}/services/tagmanager.googleapis.com"
@@ -128,11 +128,12 @@ def enable_tagmanager_api(project_id: str, credentials: Credentials):
 
 
 def get_oauth_creds(client_id: str, client_secret: str) -> Credentials:
+  client_config = {
+      "installed": {"client_id": client_id, "client_secret": client_secret}
+  }
   scopes = ["https://www.googleapis.com/auth/tagmanager.edit.containers"]
-  creds = google_oauth_lib.get_user_credentials(
-      scopes, client_id, client_secret
-  )
-  return creds
+  flow = InstalledAppFlow.from_client_config(client_config, scopes)
+  return flow.run_console()
 
 
 def deploy_cwv_template(gtm_service: discovery.Resource, gtm_parent: str):
