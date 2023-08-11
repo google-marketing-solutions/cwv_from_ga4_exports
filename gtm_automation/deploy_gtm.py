@@ -15,11 +15,12 @@ limitations under the License.
 import argparse
 import os
 
-import google.auth
-from google.auth.credentials import Credentials
 from google.cloud import service_usage_v1
+from google.oauth2.credentials import Credentials
+import google_auth_oauthlib
 from googleapiclient import discovery
 from googleapiclient import errors
+import oauth2client
 
 cwv_template_data = (
     "___TERMS_OF_SERVICE___\n\nBy creating or modifying this file you agree to"
@@ -126,6 +127,14 @@ def enable_tagmanager_api(project_id: str, credentials: Credentials):
     ) from ex
 
 
+def get_oauth_creds(client_id: str, client_secret: str) -> Credentials:
+  scopes = ["https://www.googleapis.com/auth/tagmanager.edit.containers"]
+  creds = google_oauth_lib.get_user_credentials(
+      scopes, client_id, client_secret
+  )
+  return creds
+
+
 def deploy_cwv_template(gtm_service: discovery.Resource, gtm_parent: str):
   """Deploys the gPS Core Web Vitals Tag.
 
@@ -163,16 +172,35 @@ def main():
       required=True,
       help="The workspace ID to use.",
   )
+  arg_parser.add_argument(
+      "-i",
+      "--client_id",
+      type=str,
+      required=True,
+      help="The OAuth2 client ID to use in the user authentication flow.",
+  )
+  arg_parser.add_argument(
+      "-s",
+      "--client_secret",
+      type=str,
+      required=True,
+      help="The OAuth2 client secret to use in the user authentication flow.",
+  )
   args = arg_parser.parse_args()
 
   gtm_parent = f"accounts/{args.account}/containers/{args.container}/workspaces/{args.workspace}"
-  credentials, project_id = google.auth.default()
+  gcp_creds, project_id = google.auth.default()
   if not project_id:
     project_id = os.environ["GOOGLE_CLOUD_PROJECT"]
 
-  enable_tagmanager_api(project_id=project_id, credentials=credentials)
+  enable_tagmanager_api(project_id=project_id, credentials=gcp_creds)
 
-  with discovery.build("tagmanager", "v2", credentials=credentials) as gtm_service:
+  api_creds = get_oauth_creds(
+      client_id=args.client_id, client_secret=args.client_secret
+  )
+  with discovery.build(
+      "tagmanager", "v2", credentials=api_creds
+  ) as gtm_service:
     deploy_cwv_template(gtm_service=gtm_service, gtm_parent=gtm_parent)
 
 
