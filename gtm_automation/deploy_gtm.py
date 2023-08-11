@@ -129,11 +129,21 @@ def enable_tagmanager_api(project_id: str, credentials: Credentials):
 
 def get_oauth_creds(client_id: str, client_secret: str) -> Credentials:
   client_config = {
-      "installed": {"client_id": client_id, "client_secret": client_secret}
+      "installed": {
+          "client_id": client_id,
+          "client_secret": client_secret,
+          "redirect_uris": ["http://localhost", "urn:ietf:wg:oauth:2.0:oob"],
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://accounts.google.com/o/oauth2/token",
+      }
   }
   scopes = ["https://www.googleapis.com/auth/tagmanager.edit.containers"]
   flow = InstalledAppFlow.from_client_config(client_config, scopes)
-  return flow.run_console()
+  auth_url, _ = flow.authorization_url()
+  print("Please visit this URL to authorise the tool: {}".format(auth_url))
+  auth_code = input("Please enter the authorization code: ")
+  flow.fetch_token(code=auth_code)
+  return flow.credentials
 
 
 def deploy_cwv_template(gtm_service: discovery.Resource, gtm_parent: str):
