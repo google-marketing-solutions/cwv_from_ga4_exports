@@ -347,13 +347,13 @@ function deployGA4EventTag(gtmParent) {
         },
       ],
     })
-    .then((gtmResp) => {
-      addSuccessMessage('Deployed GA4 Event Tag');
-      addSuccessMessage('<br><strong>All Done!</strong>');
-    })
-    .catch((err) => {
-      addErrorMessage('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
-    });
+      .then((gtmResp) => {
+        addSuccessMessage('Deployed GA4 Event Tag');
+        addSuccessMessage('<br><strong>All Done!</strong>');
+      })
+      .catch((err) => {
+        addErrorMessage('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
+      });
   };
   if (gapi.client.getToken() === null) {
     tokenClient.requestAccessToken({ prompt: 'consent' });
