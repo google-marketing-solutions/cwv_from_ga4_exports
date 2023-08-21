@@ -193,7 +193,7 @@ FROM
             SELECT
               (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')
                 AS ga_session_id,
-              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'web_vitals_measurement_id')
+              (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'metric_id')
                 AS metric_id,
               ANY_VALUE(device.category) AS device_category,
               ANY_VALUE(device.operating_system) AS device_os,
@@ -226,7 +226,7 @@ FROM
                 (
                   SELECT COALESCE(value.double_value, value.int_value)
                   FROM UNNEST(event_params)
-                  WHERE key = 'web_vitals_measurement_value'
+                  WHERE key = 'metric_value'
                 )) AS metric_value,
             FROM
               `{project_id}.analytics_{ga_property}.events_*`
