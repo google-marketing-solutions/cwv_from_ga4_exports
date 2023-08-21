@@ -21,11 +21,33 @@ let tokenClient;
 let customEventTriggerId;
 
 /**
+ * Adds a message to the success-messages div on the page.
+ *
+ * @param {str} message The message to add to the page.
+ */
+function addSuccessMessage(message) {
+  const successDiv = document.getElementById('success-messages');
+  successDiv.innerHTML += message + '<br>';
+}
+
+/**
+ * Adds a message to the error-messages div on the page.
+ *
+ * @param {str} message The error message to add to the page.
+ */
+function addErrorMessage(message) {
+  const errorDiv = document.getElementById('error-messages');
+  errorDiv.innerHTML += message + '<br>';
+}
+
+/**
  * Runs the authorization flow to allow the app to use the GTM API.
  *
- * @param event The event that triggers the function.
+ * @param {Event} event The event that triggers the function.
  */
 function authorizeApp(event) {
+  document.getElementById('success-messages').innerHTML = '';
+  document.getElementById('error-messages').innerHTML = '';
   event.preventDefault();
   const clientId = document.getElementById('client-id').value;
   tokenClient = google.accounts.oauth2.initTokenClient({
@@ -76,11 +98,11 @@ function deployTag() {
       tagFiringOption: "oncePerEvent",
     })
       .then((gtmResp) => {
-        console.log('Deployed GTM Tag.');
+        addSuccessMessage('Deployed GTM Tag.');
         deployEventTrigger(gtmParent);
       })
       .catch((err) => {
-        console.error('Error deploying GTM Tag: ' + err.result.error.details[0].detail);
+        addErrorMessage('Error deploying GTM Tag: ' + err.result.error.details[0].detail);
       });
   };
   if (gapi.client.getToken() === null) {
@@ -118,12 +140,12 @@ function deployEventTrigger(gtmParent) {
       ],
     })
       .then((gtmResp) => {
-        console.log('Deployed custom event trigger.');
+        addSuccessMessage('Deployed custom event trigger.');
         customEventTriggerId = gtmResp.result.triggerId;
         deployDataLayerVariables(gtmParent);
       })
       .catch((err) => {
-        console.error('Error deploying GTM Event Trigger: ' + err.result.error.details[0].detail);
+        addErrorMessage('Error deploying GTM Event Trigger: ' + err.result.error.details[0].detail);
       });
   };
   if (gapi.client.getToken() === null) {
@@ -174,13 +196,13 @@ function deployDataLayerVariables(gtmParent) {
         }
       })
         .then((gtmResp) => {
-          console.log('Deployed data layer variable - ' + name);
+          addSuccessMessage('Deployed data layer variable - ' + name);
           if (++count === variableNames.length) {
             deployGA4EventTag(gtmParent);
           }
         })
         .catch((err) => {
-          console.error('Error deploying GTM Variable: ' + err.result.error.details[0].detail);
+          addErrorMessage('Error deploying GTM Variable: ' + err.result.error.details[0].detail);
         });
     }
   };
@@ -305,10 +327,11 @@ function deployGA4EventTag(gtmParent) {
       ],
     })
     .then((gtmResp) => {
-      console.log('Deployed GA4 Event Tag');
+      addSuccessMessage('Deployed GA4 Event Tag');
+      addSuccessMessage('<br><strong>All Done!</strong>');
     })
     .catch((err) => {
-      console.error('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
+      addErrorMessage('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
     });
   };
   if (gapi.client.getToken() === null) {
