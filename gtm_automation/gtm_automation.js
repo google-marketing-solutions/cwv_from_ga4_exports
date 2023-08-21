@@ -14,8 +14,9 @@
   limitations under the License.
 */
 /**
-
-*/
+ * @fileoverview Provides the functions to deploy the tags required to track
+ * Core Web Vitals in GA4 to Google Tag Manager.
+ */
 
 let tokenClient;
 let customEventTriggerId;
@@ -41,7 +42,8 @@ function addErrorMessage(message) {
 }
 
 /**
- * Runs the authorization flow to allow the app to use the GTM API.
+ * Runs the authorization flow to allow the app to use the GTM API. If completed
+ * successfully, deployTag() is called.
  *
  * @param {Event} event The event that triggers the function.
  */
@@ -65,7 +67,8 @@ function authorizeApp(event) {
 }
 
 /**
- * Deploys the gPS Core Web Vitals Tag to the GTM workspace.
+ * Deploys the gPS Core Web Vitals Tag to the GTM workspace as defined on the
+ * page. If completed successfully, deployEventTrigger() is called.
  */
 function deployTag() {
   tokenClient.callback = (resp) => {
@@ -112,6 +115,13 @@ function deployTag() {
   }
 }
 
+/**
+ * Deploys the custom event trigger fired when a core-web-vitals event is pushed
+ * to the data layer. If completed successfully, deployDataLayerVariables is
+ * called.
+ *
+ * @param {str} gtmParent The parent path of the container to deploy to.
+ */
 function deployEventTrigger(gtmParent) {
   tokenClient.callback = (resp) => {
     if (resp.error !== undefined) {
@@ -155,6 +165,12 @@ function deployEventTrigger(gtmParent) {
   }
 }
 
+/**
+ * Creates the data layer variables used to store the core web vitals
+ * measurements in. If completed successfully, deployGA4EventTag() is called.
+ *
+ * @param {str} gtmParent The parent path of the container to deploy to.
+ */
 function deployDataLayerVariables(gtmParent) {
   const variableNames = [
     'metric_name',
@@ -213,6 +229,11 @@ function deployDataLayerVariables(gtmParent) {
   }
 }
 
+/**
+ * Deploys a GA4 Event tag that sends core-web-vitals events to GA4.
+ *
+ * @param {str} gtmParent The parent path of the container to deploy to.
+ */
 function deployGA4EventTag(gtmParent) {
   tokenClient.callback = (resp) => {
     if (resp.error !== undefined) {
@@ -341,14 +362,19 @@ function deployGA4EventTag(gtmParent) {
   }
 }
 
+// add event listener to the submit button on the page.
 document.getElementById('deploy-form').addEventListener('submit', authorizeApp);
 
+// The content of the custom HTML tag begin deployed to GTM that will collect
+// Core Web Vitals data.
 const cwvTagValue = `
 <script src="https://unpkg.com/web-vitals@3/dist/web-vitals.attribution.iife.js" ></script>
 <script>
-/** Extracts the CWV data from the object passed by web-vitals.
+/**
+ * Extracts the CWV data from the object passed by web-vitals.
  *
- * @param event The event object passed by wb-vitals when this is used as a callback.
+ * @param event The event object passed by web-vitals when this is used as a
+ *              callback.
  *
  * @returns A new object with the CWV data.
  */
