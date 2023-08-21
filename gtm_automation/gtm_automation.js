@@ -382,9 +382,10 @@ function extractCWVData(metric) {
   var cwvData = {
     metric_name: metric.name,
     metric_id: metric.id,
+    metric_rating: metric.rating,
     metric_value: metric.value,
     value: metric.delta,
-    attribution: metric.attribution
+    attribution: JSON.stringify(metric.attribution),
   };
   return cwvData;
 }
