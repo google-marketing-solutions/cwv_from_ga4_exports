@@ -30,7 +30,7 @@
  *        metric_rating: string,
  *        metric_value: number,
  *        value: number,
- *        attribution: sring
+ *        attribution: string
  *      }
  *     }
  *   ```
