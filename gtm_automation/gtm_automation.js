@@ -16,15 +16,55 @@
 /**
  * @fileoverview Provides the functions to deploy the tags required to track
  * Core Web Vitals in GA4 to Google Tag Manager.
+ *
+ * The gPS Core Web Vitals tag add the [web-vitals](https://github.com/GoogleChrome/web-vitals)
+ * library to the page, and sets up the callbacks for when CWV metrics are
+ * reported. The callbacks push the CWV measurement to the data layer as an
+ * event in the following format:
+ *   ```
+ *     {
+ *      event: 'core-web-vitals',
+ *      core_web_vitals_measurement: {
+ *        metric_name: string,
+ *        metric_id: string,
+ *        metric_rating: string,
+ *        metric_value: number,
+ *        value: number,
+ *        attribution: sring
+ *      }
+ *     }
+ *   ```
+ * where the attribution property is a stringified JSON representation of the
+ * attribution object passed from the webvitals library.
+ *
+ * The gPS Core Web Vitals GA4 Event Tag is a Google Analytis 4 Event tag that
+ * is triggered when a core-web-vitals event happens. The tag forwards the CWV
+ * data to GA4 as an event with the form:
+ *   ```
+ *     Event Name: The name of the CWV being reported
+ *     Event Parameters:
+ *       name: metric_name     value: the metric being reported (e.g. LCP)
+ *       name: metric_id       value: unique ID used to aggregate events
+ *       name: metric_rating   value: string rating of the value (e.g. 'good')
+ *       name: metric_value    value: the numeric value of the metric
+ *       name: value           value: delta between measurements to allow summing
+ *       name: attribution     value: stringified JSON of the attribution object
+ *   ```
+ *
+ * The workflow must be run from start to finish without error. This means that
+ * if an error occurs partway through deployment, everything already added to
+ * GTM will need to be removed before the workflow can be run again.
  */
 
+// The OAuth token client used to authenticate API calls.
 let tokenClient;
+// The trigger ID of the custom event trigger used to trigger the GA4 Event Tag.
 let customEventTriggerId;
 
 /**
  * Adds a message to the success-messages div on the page.
  *
- * @param {str} message The message to add to the page.
+ * @param {string} message The message to add to the page.
  */
 function addSuccessMessage(message) {
   const successDiv = document.getElementById('success-messages');
@@ -34,7 +74,7 @@ function addSuccessMessage(message) {
 /**
  * Adds a message to the error-messages div on the page.
  *
- * @param {str} message The error message to add to the page.
+ * @param {string} message The error message to add to the page.
  */
 function addErrorMessage(message) {
   const errorDiv = document.getElementById('error-messages');
@@ -45,7 +85,13 @@ function addErrorMessage(message) {
  * Runs the authorization flow to allow the app to use the GTM API. If completed
  * successfully, deployTag() is called.
  *
- * @param {Event} event The event that triggers the function.
+ * The user will be asked in a pop-up to choose an account to authorise with,
+ * and then asked to allow the app to edit GTM containers.
+ *
+ * The success-messages and error-messages divs are also cleared.
+ *
+ * @param {Event} event The event that triggers the function. This event is
+ *                      ignored.
  */
 function authorizeApp(event) {
   document.getElementById('success-messages').innerHTML = '';
@@ -67,8 +113,13 @@ function authorizeApp(event) {
 }
 
 /**
- * Deploys the gPS Core Web Vitals Tag to the GTM workspace as defined on the
- * page. If completed successfully, deployEventTrigger() is called.
+ * Deploys the gPS Core Web Vitals Tag to the GTM workspace entered into the
+ * form on the accompanying webpage. The tag is triggered once on all page
+ * loads.
+ *
+ * If completed successfully, a message is added to the web page and
+ * deployEventTrigger() is called. If the tag creation fails, an error message
+ * is added to the web page and the script stops.
  */
 function deployTag() {
   tokenClient.callback = (resp) => {
@@ -95,6 +146,7 @@ function deployTag() {
           value: 'false',
         },
       ],
+      // Trigger ID for the standard "All Pages" trigger
       firingTriggerId: [
         "2147479553"
       ],
@@ -118,9 +170,10 @@ function deployTag() {
 /**
  * Deploys the custom event trigger fired when a core-web-vitals event is pushed
  * to the data layer. If completed successfully, deployDataLayerVariables is
- * called.
+ * called. If the creation fails, an error message is added to the web page and
+ * the script stops.
  *
- * @param {str} gtmParent The parent path of the container to deploy to.
+ * @param {string} gtmParent The parent path of the workspace to deploy to.
  */
 function deployEventTrigger(gtmParent) {
   tokenClient.callback = (resp) => {
@@ -167,14 +220,20 @@ function deployEventTrigger(gtmParent) {
 
 /**
  * Creates the data layer variables used to store the core web vitals
- * measurements in. If completed successfully, deployGA4EventTag() is called.
+ * measurements in for use with the GA4 event tag. The variables are all
+ * prefixed with `core_web_vitals_measurement`.
  *
- * @param {str} gtmParent The parent path of the container to deploy to.
+ * If completed successfully, a message is added to the web page and
+ * deployGA4EventTag() is called. If an error occurs, a message is added to the
+ * web page and the script stops.
+ *
+ * @param {string} gtmParent The parent path of the workspace to deploy to.
  */
 function deployDataLayerVariables(gtmParent) {
   const variableNames = [
     'metric_name',
     'metric_id',
+    'metric_rating',
     'metric_value',
     'value',
     'attribution',
@@ -230,9 +289,14 @@ function deployDataLayerVariables(gtmParent) {
 }
 
 /**
- * Deploys a GA4 Event tag that sends core-web-vitals events to GA4.
+ * Deploys the GA4 Event tag that sends core-web-vitals events to GA4. The tag
+ * is triggered using the custom even trigger deployed in `deployEventTrigger`.
  *
- * @param {str} gtmParent The parent path of the container to deploy to.
+ * If completed successfully, an completion message is added to the web page. If
+ * an error occurs, an error message is added to the web page and the script
+ * stops.
+ *
+ * @param {string} gtmParent The parent path of the workspace to deploy to.
  */
 function deployGA4EventTag(gtmParent) {
   tokenClient.callback = (resp) => {
@@ -295,6 +359,21 @@ function deployGA4EventTag(gtmParent) {
                   type: 'template',
                   key: 'value',
                   value: '{{core-web-vitals - metric_id}}'
+                },
+              ],
+            },
+            {
+              type: 'map',
+              map: [
+                {
+                  type: 'template',
+                  key: 'name',
+                  value: 'metric_rating',
+                },
+                {
+                  type: 'template',
+                  key: 'value',
+                  value: '{{core-web-vitals - metric_rating}}'
                 },
               ],
             },
