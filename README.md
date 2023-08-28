@@ -17,15 +17,69 @@ limitations under the License
 This solution makes it simple to get started with reporting on Core Web Vitals 
 being exported from GA4 into Big Query.
 
+Deploying the solution is a two-part process. In the first part, a custom HTML
+tag is deployed to GTM. This facilitates the actual collection of the CWV data.
+In the second step, the SQL needed to turn the GA4 events in BigQuery into easy
+to use tables is deployed and scheduled. The optional email alerting can also be
+deployed at this time.
+
 ## Prerequisites
 
 ### Before You Start
 
 Before you start, you will require the following:
 
--   A Google Cloud Project with a billing account associated with it.
--   A Google Analytics 4 account
+-   A Google Tag Manager Account linked to the website you will be measuring.
+-   A Google Analytics 4 account, preferably exporting data to BigQuery.
+-   A Google Cloud Project with a billing account associated with it. This
+    should be the account you are exporting GA4 data to, if you already are.
 -   (_Optional_) An SMTP (i.e. email) server 
+
+## Part 1
+
+In the first part, the tags, triggers, and variables necessary for collecting
+CWV data and forwarding it to GA4 are deployed to GTM.
+
+### The Information You'll Need
+
+You will need the following information to deploy to GTM:
+
+1.  The OAuth Client ID to use when authenticating (see [Getting an
+    OAuth ID](#getting-an-oauth-id) for more information).
+1.  The Google Tag Manager Account ID, Container ID, and Workspace ID
+    for where the tag will be deployed to.
+1.  The GA4 Measurement ID of the GA4 property to send the CWV
+    measurements to.
+
+To find your GTM workspace details, open tagmanager.google.com, choose the
+container you plan to deploy the solution to, and check the URL in the browser.
+It will have the form
+https://tagmanager.google.com/#/container/accounts/&lt;ACCOUNT
+ID&gt;/containers/&lt;CONTAINER ID&gt;/workspaces/&lt;WORKSPACE ID&gt;, where
+the IDs you need are the numbers in place of the "&lt;SOMETHING ID&gt;" fields.
+
+To find your GA4 measurement ID, open Google Analytics and choose the property
+you will sending the CWV measurements to. The ID can be found under Settings >>
+Data Streams >> Web, and then choose the stream you want to send the measurements
+to. The Measurement ID is on the far right of the _Stream details_ box, and
+should start with a "G-".
+
+#### Getting an OAuth ID
+
+An OAuth ID is required to authenticate with the GTM API when deploying the GTM
+tags, etc. Before creating an OAuth ID, you will need to decide where you will
+be hosting the solution web page. If you will be using you local computer, this
+is local host. Otherwise, you will need the fully qualified domain name of the
+server you will be using (i.e. everything after the http:// or https://, e.g.
+stuff.example.com).
+
+To create the OAuth ID, open the Google Cloud Project you will be using to store
+your CWV data in BigQuery. From the overflow menu (aka hamburger menu), choose
+_APIs & Services_ >> _OAuth consent screen_, then follow these steps:
+
+1. 
+
+## Part 2
 
 ### The Information You'll Need
 
@@ -47,8 +101,8 @@ This includes:
     
 ## Getting Core Web Vitals into BigQuery
 
-For the solution to work, you first need to report CWV metrics to GA4. From GA4,
-the data then needs to be exported to BigQuery.
+For the solution to work, you first need to report CWV metrics to
+GA4. From GA4, the data then needs to be exported to BigQuery.
 
 ### Sending CWV Data to GA4
 
