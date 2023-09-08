@@ -30,7 +30,7 @@ Before you start, you will require the following:
 -   A Google Tag Manager Account linked to the website you will be measuring.
 -   A Google Analytics 4 account, preferably exporting data to BigQuery.
 -   A Google Cloud Project with a billing account associated with it. This
-    should be the account you are exporting GA4 data to, if you already are.
+    should be the project you are exporting GA4 data to, if you already are.
 -   (_Optional_) An SMTP (i.e. email) server 
 
 ## Part 1 - Setting up GTM
