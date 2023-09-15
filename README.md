@@ -33,6 +33,25 @@ Before you start, you will require the following:
     should be the project you are exporting GA4 data to, if you already are.
 -   (_Optional_) An SMTP (i.e. email) server 
 
+You also need to enable the tagmanager API for your Cloud Project. See the next
+section, [Enabling the tagmanager API](#enabling-the-tagmanager-api) for more
+information.
+
+### Enabling the tagmanager API
+
+Enabling the tagmanager API for your Google Cloud project is necessary for
+allowing the solution to make changes to your Tag Manager workspaces. To enable
+the API, follow these steps:
+
+1.  Open the Google Cloud Console and navigate to the APIs & Services page
+    ([link](https://console.cloud.google.com/apis/dashboard))
+1.  Click the **+ ENABLE APIS AND SERVICES** button at the top of the page.
+1.  Using the search box at the top of the page, search for _Tag Manager API_
+1.  Click the resulting card labeled **Tag Manager API**
+1.  Click the **ENABLE** button to enable the API.
+
+You may need to wait a few minutes for the API to be usable after enabling it.
+
 ## Part 1 - Setting up GTM
 
 In the first part, the tags, triggers, and variables necessary for collecting
