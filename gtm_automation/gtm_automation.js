@@ -106,7 +106,7 @@ function authorizeApp(event) {
   gapi.load('client', () => {
     gapi.client.init({})
       .then(function () {
-        gapi.client.load('https://www.googleapis.com/discovery/v1/apis/tagmanager/v2/rest');
+        gapi.client.load('https://tagmanager.googleapis.com/$discovery/rest?version=v2');
       })
       .then(deployTag());
   });
@@ -176,46 +176,36 @@ function deployTag() {
  * @param {string} gtmParent The parent path of the workspace to deploy to.
  */
 function deployEventTrigger(gtmParent) {
-  tokenClient.callback = (resp) => {
-    if (resp.error !== undefined) {
-      throw (resp);
-    }
-    gapi.client.tagmanager.accounts.containers.workspaces.triggers.create({
-      parent: gtmParent,
-      name: 'gPS Core Web Vitals Event Trigger',
-      type: 'customEvent',
-      customEventFilter: [
-        {
-          type: 'equals',
-          parameter: [
-            {
-              type: 'template',
-              key: 'arg0',
-              value: '{{_event}}',
-            },
-            {
-              type: 'template',
-              key: 'arg1',
-              value: 'core-web-vitals',
-            },
-          ],
-        },
-      ],
+  gapi.client.tagmanager.accounts.containers.workspaces.triggers.create({
+    parent: gtmParent,
+    name: 'gPS Core Web Vitals Event Trigger',
+    type: 'customEvent',
+    customEventFilter: [
+      {
+        type: 'equals',
+        parameter: [
+          {
+            type: 'template',
+            key: 'arg0',
+            value: '{{_event}}',
+          },
+          {
+            type: 'template',
+            key: 'arg1',
+            value: 'core-web-vitals',
+          },
+        ],
+      },
+    ],
+  })
+    .then((gtmResp) => {
+      addSuccessMessage('Deployed custom event trigger.');
+      customEventTriggerId = gtmResp.result.triggerId;
+      deployDataLayerVariables(gtmParent);
     })
-      .then((gtmResp) => {
-        addSuccessMessage('Deployed custom event trigger.');
-        customEventTriggerId = gtmResp.result.triggerId;
-        deployDataLayerVariables(gtmParent);
-      })
-      .catch((err) => {
-        addErrorMessage('Error deploying GTM Event Trigger: ' + err.result.error.details[0].detail);
-      });
-  };
-  if (gapi.client.getToken() === null) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  } else {
-    tokenClient.requestAccessToken({ prompt: '' });
-  }
+    .catch((err) => {
+      addErrorMessage('Error deploying GTM Event Trigger: ' + err.result.error.details[0].detail);
+    });
 }
 
 /**
@@ -239,52 +229,42 @@ function deployDataLayerVariables(gtmParent) {
     'attribution',
   ];
 
-  tokenClient.callback = (resp) => {
-    if (resp.error !== undefined) {
-      throw (resp);
-    }
-    count = 0;
-    for (const name of variableNames) {
-      gapi.client.tagmanager.accounts.containers.workspaces.variables.create({
-        parent: gtmParent,
-        resource: {
-          name: 'core-web-vitals - ' + name,
-          type: 'v',
-          formatValue: {},
-          parameter: [
-            {
-              type: 'integer',
-              key: 'dataLayerVersion',
-              value: '2',
-            },
-            {
-              type: 'boolean',
-              key: 'setDefaultValue',
-              value: 'false',
-            },
-            {
-              type: 'template',
-              key: 'name',
-              value: 'core_web_vitals_measurement.' + name,
-            },
-          ],
+  count = 0;
+  for (const name of variableNames) {
+    gapi.client.tagmanager.accounts.containers.workspaces.variables.create({
+      parent: gtmParent,
+      resource: {
+        name: 'core-web-vitals - ' + name,
+        type: 'v',
+        formatValue: {},
+        parameter: [
+          {
+            type: 'integer',
+            key: 'dataLayerVersion',
+            value: '2',
+          },
+          {
+            type: 'boolean',
+            key: 'setDefaultValue',
+            value: 'false',
+          },
+          {
+            type: 'template',
+            key: 'name',
+            value: 'core_web_vitals_measurement.' + name,
+          },
+        ],
+      }
+    })
+      .then((gtmResp) => {
+        addSuccessMessage('Deployed data layer variable - ' + name);
+        if (++count === variableNames.length) {
+          deployGA4EventTag(gtmParent);
         }
       })
-        .then((gtmResp) => {
-          addSuccessMessage('Deployed data layer variable - ' + name);
-          if (++count === variableNames.length) {
-            deployGA4EventTag(gtmParent);
-          }
-        })
-        .catch((err) => {
-          addErrorMessage('Error deploying GTM Variable: ' + err.result.error.details[0].detail);
-        });
-    }
-  };
-  if (gapi.client.getToken() === null) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  } else {
-    tokenClient.requestAccessToken({ prompt: '' });
+      .catch((err) => {
+        addErrorMessage('Error deploying GTM Variable: ' + err.result.error.details[0].detail);
+      });
   }
 }
 
@@ -299,146 +279,137 @@ function deployDataLayerVariables(gtmParent) {
  * @param {string} gtmParent The parent path of the workspace to deploy to.
  */
 function deployGA4EventTag(gtmParent) {
-  tokenClient.callback = (resp) => {
-    if (resp.error !== undefined) {
-      throw (resp);
-    }
-    const ga4Id = document.getElementById('ga4').value;
-    gapi.client.tagmanager.accounts.containers.workspaces.tags.create({
-      parent: gtmParent,
-      name: 'gPS Core Web Vitals GA4 Event Tag',
-      type: 'gaawe',
-      firingTriggerId: [
-        customEventTriggerId,
-      ],
-      tagFiringOption: "oncePerEvent",
-      parameter: [
-        {
-          type: 'template',
-          key: 'measurementId',
-          value: 'none',
-        },
-        {
-          type: 'template',
-          key: 'measurementIdOverride',
-          value: ga4Id,
-        },
-        {
-          type: 'template',
-          key: 'eventName',
-          value: '{{core-web-vitals - metric_name}}'
-        },
-        {
-          type: 'list',
-          key: 'eventParameters',
-          list: [
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'metric_name',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - metric_name}}'
-                },
-              ],
-            },
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'metric_id',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - metric_id}}'
-                },
-              ],
-            },
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'metric_rating',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - metric_rating}}'
-                },
-              ],
-            },
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'metric_value',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - metric_value}}'
-                },
-              ],
-            },
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'value',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - value}}'
-                },
-              ],
-            },
-            {
-              type: 'map',
-              map: [
-                {
-                  type: 'template',
-                  key: 'name',
-                  value: 'attribution',
-                },
-                {
-                  type: 'template',
-                  key: 'value',
-                  value: '{{core-web-vitals - attribution}}'
-                },
-              ],
-            },
-          ]
-        },
-      ],
+  const ga4Id = document.getElementById('ga4').value;
+  gapi.client.tagmanager.accounts.containers.workspaces.tags.create({
+    parent: gtmParent,
+    name: 'gPS Core Web Vitals GA4 Event Tag',
+    type: 'gaawe',
+    firingTriggerId: [
+      customEventTriggerId,
+    ],
+    tagFiringOption: "oncePerEvent",
+    parameter: [
+      {
+        type: 'template',
+        key: 'measurementId',
+        value: 'none',
+      },
+      {
+        type: 'template',
+        key: 'measurementIdOverride',
+        value: ga4Id,
+      },
+      {
+        type: 'template',
+        key: 'eventName',
+        value: '{{core-web-vitals - metric_name}}'
+      },
+      {
+        type: 'list',
+        key: 'eventParameters',
+        list: [
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'metric_name',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - metric_name}}'
+              },
+            ],
+          },
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'metric_id',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - metric_id}}'
+              },
+            ],
+          },
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'metric_rating',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - metric_rating}}'
+              },
+            ],
+          },
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'metric_value',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - metric_value}}'
+              },
+            ],
+          },
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'value',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - value}}'
+              },
+            ],
+          },
+          {
+            type: 'map',
+            map: [
+              {
+                type: 'template',
+                key: 'name',
+                value: 'attribution',
+              },
+              {
+                type: 'template',
+                key: 'value',
+                value: '{{core-web-vitals - attribution}}'
+              },
+            ],
+          },
+        ]
+      },
+    ],
+  })
+    .then((gtmResp) => {
+      addSuccessMessage('Deployed GA4 Event Tag');
+      addSuccessMessage('<br><strong>All Done!</strong>');
+      addSuccessMessage(`Please open <a href="https://tagmanager.google.com/#/container/${gtmParent}"> your GTM Workspace</a>, check that no changes conflict with existing work, and then submit and publish the workspace to complte the setup.`)
     })
-      .then((gtmResp) => {
-        addSuccessMessage('Deployed GA4 Event Tag');
-        addSuccessMessage('<br><strong>All Done!</strong>');
-      })
-      .catch((err) => {
-        addErrorMessage('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
-      });
-  };
-  if (gapi.client.getToken() === null) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  } else {
-    tokenClient.requestAccessToken({ prompt: '' });
-  }
+    .catch((err) => {
+      addErrorMessage('Error deploying GA4 Event Tag: ' + err.result.error.details[0].detail);
+    });
 }
 
 // add event listener to the submit button on the page.
