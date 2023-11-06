@@ -44,6 +44,7 @@ def enable_services(credentials: Credentials, project_id: str):
     credentials: the Google credentials to use to authenticate.
     project_id: the project the services will be enabled for.
   """
+  print('Enabling GCP services')
   crm = discovery.build('cloudresourcemanager', 'v3')
   project = crm.projects().get(name='projects/' + project_id).execute()
   client = service_usage_v1.ServiceUsageClient(credentials=credentials)
@@ -126,6 +127,7 @@ def deploy_scheduled_materialize_query(project_id: str,
     region: the region of the dataset used for the GA export.
     ga_property: The GA property used to collect the CWV data.
   """
+  print('Deploying scheduled materialize query')
   display_name = 'Update Web Vitals Summary'
 
   materialize_query = f"""
@@ -312,12 +314,12 @@ def add_roles_to_service_account(service_account: str, project_id: str,
   - bigquery.jobs.list
   - bigquery.jobs.create
   - bigquery.transfers.update
-  - eventarc.events.receiveAuditLogWritten
   Args:
     service_account: The service account to add the role to.
     project_id: The project the new role will be created in.
     credentials: The credentials to authenticate the new role request with.
   """
+  print('Adding roles to service account')
   service = discovery.build('iam', 'v1', credentials=credentials)
   role_resp = service.projects().roles().list(
       parent=f'projects/{project_id}').execute()
@@ -342,7 +344,6 @@ def add_roles_to_service_account(service_account: str, project_id: str,
                     'bigquery.tables.update', 'bigquery.tables.updateData',
                     'bigquery.jobs.list', 'bigquery.jobs.create',
                     'bigquery.transfers.update',
-                    'eventarc.events.receiveAuditLogWritten'
                 ],
                 'stage': 'GA'
             }
