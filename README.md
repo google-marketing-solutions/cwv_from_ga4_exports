@@ -20,8 +20,7 @@ being exported from GA4 into Big Query.
 Deploying the solution is a two-part process. In the first part, a custom HTML
 tag is deployed to GTM. This facilitates the actual collection of the CWV data.
 In the second step, the SQL needed to turn the GA4 events in BigQuery into easy
-to use tables is deployed and scheduled. The optional email alerting can also be
-deployed at this time.
+to use tables is deployed and scheduled.
 
 ## Prerequisites
 
@@ -31,7 +30,6 @@ Before you start, you will require the following:
 -   A Google Analytics 4 account, preferably exporting data to BigQuery.
 -   A Google Cloud Project with a billing account associated with it. This
     should be the project you are exporting GA4 data to, if you already are.
--   (_Optional_) An SMTP (i.e. email) server 
 
 You also need to enable the tagmanager API for your Cloud Project. See the next
 section, [Enabling the tagmanager API](#enabling-the-tagmanager-api) for more
@@ -215,10 +213,6 @@ To deploy the solution:
 The script will print status messages to the console, including errors if any
 occur. On error, the script will exit. Otherwise, you will be returned to your 
 prompt upon successful completion.
-
-**Please Note:** Deploying the Cloud Run function for the first time can take a
-significant amount of time (up to 30 minutes). Please be sure that your 
-connection will not timeout during the first deployment.
 
 #### Updating Your Deployment
 
