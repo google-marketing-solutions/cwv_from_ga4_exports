@@ -50,7 +50,9 @@ def enable_services(credentials: Credentials, project_id: str):
   request = service_usage_v1.BatchEnableServicesRequest()
   request.parent = project['name']
   request.service_ids = [
-      'compute.googleapis.com', 'bigquerydatatransfer.googleapis.com'
+      'compute.googleapis.com',
+      'bigquerydatatransfer.googleapis.com',
+      'iam.googleapis.com',
   ]
   operation = client.batch_enable_services(request=request)
   try:
