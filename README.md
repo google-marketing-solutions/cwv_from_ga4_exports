@@ -20,8 +20,7 @@ being exported from GA4 into Big Query.
 Deploying the solution is a two-part process. In the first part, a custom HTML
 tag is deployed to GTM. This facilitates the actual collection of the CWV data.
 In the second step, the SQL needed to turn the GA4 events in BigQuery into easy
-to use tables is deployed and scheduled. The optional email alerting can also be
-deployed at this time.
+to use tables is deployed and scheduled.
 
 ## Prerequisites
 
@@ -31,7 +30,6 @@ Before you start, you will require the following:
 -   A Google Analytics 4 account, preferably exporting data to BigQuery.
 -   A Google Cloud Project with a billing account associated with it. This
     should be the project you are exporting GA4 data to, if you already are.
--   (_Optional_) An SMTP (i.e. email) server 
 
 You also need to enable the tagmanager API for your Cloud Project. See the next
 section, [Enabling the tagmanager API](#enabling-the-tagmanager-api) for more
@@ -158,19 +156,16 @@ Web Vitals for your website.
 
 You will need the following information to be able to deploy the solution:
 
-1.  The ID of your Google Cloud project. This can be found on the Google Cloud 
+1.  The **ID of your Google Cloud project**. This can be found on the Google Cloud 
     dashboard in the Project Info section. Be sure to use the ID, not the name.
-1.  Your GA4 Property ID. This can be found on the Admin page's Property 
-    Settings tab in the Property details box.
-1.  **Optional** Your Core Web Vitals performance budget. You will need this to
-    set the thresholds for when an alert email is sent. Standard values are
-    provided if you do not have a custom budget.
-1.  **Optional** If deploying the email alerting service, the details for your
-    SMTP server. This includes:
-    +   the server's address.
-    +   the username and password to use when authenticating with the server.
-    +   the email address to use as the alert sender.
-    +   the email addresses to send the alert to.
+1.  The **GCP region** you will deploy to. This _must_ be the same region you are
+    exporting your GA4 data to. To find the region, open BigQuery Studio, select
+    your project, and select the analytics dataset in the Explorer (it will be
+    named analytics_### where __###__ is your GA4 property ID). The GCP cloud
+    region is listed in the details under __Data location__.
+1.  Your **GA4 Property ID**. This can be found on the Admin page's Property
+    Settings tab in the Property details box. It is also the numbers at the end
+    of the BigQuery analytics dataset name.
     
 ### Exporting CWV Data to BigQuery
 
@@ -187,6 +182,15 @@ The streaming (a.k.a. intraday) tables are optional.
 Once you have CWV data in BigQuery, you can use this solution to create summary
 tables in BigQuery and send alert emails when the CWV values don't meet your 
 targets.
+
+#### Prerequisites
+
+Before you can run the deployment script, you must enable the Cloud Resource Manager API. To do this:
+
+1.  Open the APIs & Services Library by clicking on __APIs & Services > Library__ from the sidebar in the Google Cloud Console.
+1.  Search for "Resource Manager" using the search field on the library welcome page.
+1.  From the search results, select the **Cloud Resource Manager API**
+1.  Click the **Enable** button on the Product details page.
 
 #### Deployment Steps
 
@@ -215,10 +219,6 @@ To deploy the solution:
 The script will print status messages to the console, including errors if any
 occur. On error, the script will exit. Otherwise, you will be returned to your 
 prompt upon successful completion.
-
-**Please Note:** Deploying the Cloud Run function for the first time can take a
-significant amount of time (up to 30 minutes). Please be sure that your 
-connection will not timeout during the first deployment.
 
 #### Updating Your Deployment
 
