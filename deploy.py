@@ -247,7 +247,6 @@ FROM
   )
 CROSS JOIN UNNEST(events) AS evt
 WHERE evt.event_name NOT IN ('first_visit', 'purchase');
-
   """
 
   delete_scheduled_query(display_name=display_name,
