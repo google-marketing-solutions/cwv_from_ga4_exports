@@ -151,13 +151,9 @@ CREATE OR REPLACE TABLE `{project_id}.analytics_{ga_property}.web_vitals_summary
   CLUSTER BY metric_name
 AS
 SELECT
-  ga_session_id,
+  session_id,
   IF(
-    EXISTS(
-      SELECT 1
-      FROM UNNEST(events) AS e
-      WHERE e.event_name = 'first_visit'
-    ),
+    is_first_visit > 0,
     'New user',
     'Returning user') AS user_type,
   IF(
@@ -169,12 +165,14 @@ SELECT
 FROM
   (
     SELECT
-      ga_session_id,
+      session_id,
+      MAX(is_first_visit) as is_first_visit,
       ARRAY_AGG(custom_event) AS events
     FROM
       (
         SELECT
-          ga_session_id,
+          session_id,
+          is_first_visit,
           STRUCT(
             country,
             device_category,
@@ -195,8 +193,10 @@ FROM
         FROM
           (
             SELECT
-              (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id')
-                AS ga_session_id,
+              CONCAT(
+                user_pseudo_id, 
+                (SELECT value.int_value FROM UNNEST(event_params) WHERE key = 'ga_session_id'))
+                AS session_id,
               (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'metric_id')
                 AS metric_id,
               ANY_VALUE(device.category) AS device_category,
@@ -213,7 +213,8 @@ FROM
                 AS debug_target,
               ANY_VALUE(user_pseudo_id) AS user_pseudo_id,
               ANY_VALUE(geo.country) AS country,
-              ANY_VALUE(event_name) AS event_name,
+              MAX(IF(event_name in ('LCP', 'FID', 'CLS', 'INP', 'TTFB'), event_name, null)) AS event_name,
+              MAX(IF(event_name = 'first_visit', 1, null)) as is_first_visit,
               SUM(ecommerce.purchase_revenue) AS session_revenue,
               MAX(
                 (
@@ -241,8 +242,8 @@ FROM
           )
       )
     WHERE
-      ga_session_id IS NOT NULL
-    GROUP BY ga_session_id
+      session_id IS NOT NULL
+    GROUP BY session_id
   )
 CROSS JOIN UNNEST(events) AS evt
 WHERE evt.event_name NOT IN ('first_visit', 'purchase');
