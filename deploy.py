@@ -18,22 +18,14 @@
 
 import argparse
 import os
-import subprocess
-import sys
 import time
 from typing import List
 
 import google.api_core.exceptions
 import google.auth
 from google.auth.credentials import Credentials
-from google.cloud import bigquery
 from google.cloud import bigquery_datatransfer
-from google.cloud import eventarc
 from google.cloud import service_usage_v1
-
-from google.cloud.eventarc_v1.types.trigger import CloudRun
-from google.cloud.eventarc_v1.types.trigger import Destination
-from google.cloud.eventarc_v1.types.trigger import EventFilter
 from googleapiclient import discovery
 
 
